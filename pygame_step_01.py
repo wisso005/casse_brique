@@ -1,0 +1,73 @@
+# Importer tout le module Pygame
+# Pygame DOIT être installé au préalable via `pip install pygame``
+import pygame
+
+
+# Définir la taille de la fenêtre de Pygame en pixels
+WINDOW_SIZE: tuple[int, int]  = (480, 360)
+
+class Actor:
+    _position: pygame.Vector2
+    _speed: pygame.Vector2
+    
+    def __init__(self, position: pygame.Vector2, speed: pygame.Vector2) -> None:
+        self._position = position
+        self._speed = speed
+
+    @property
+    def position(self) -> pygame.Vector2:
+        return self._position
+
+    @property
+    def speed(self) -> pygame.Vector2:
+        return self._speed
+
+    @speed.setter
+    def speed(self, speed: pygame.Vector2) -> None:
+        self._speed = speed
+
+    def _move(self) -> None:
+        self._position += self._speed
+
+    def update(self) -> None:
+        self._move()
+        
+# Définir la classe de l'application elle-même
+class Game:
+    __screen: pygame.Surface # attribut de l'écran Pygame de l'application
+    __is_running: bool # attribut de contrôle de l'activation de l'application
+
+    def __init__(self) -> None:
+        # Initialiser tous les éléments de Pygame
+        # https://www.pygame.org/docs/ref/pygame.html#pygame.init
+        pygame.init()
+        # Créer la fenêtre de l'application
+        self.__screen = pygame.display.set_mode(WINDOW_SIZE)
+        # Initialiser la variable de contrôle d'activité de l'application
+        self.__is_running = False
+        
+    
+    # Méthode fondamentale utilisée pour exécuter une application Pygame
+    def run(self) -> None:
+        # Mettre la variable de contrôle d'activité de l'application à `True`
+        self.__is_running = True
+        '''
+            Le principe essentiel à comprendre est que Pygame doit actulaliser
+            en permanence l'état de l'application.
+        '''
+        # Boucle infinie jusqu'à ce que `self.__is_running` soit définie à `False`
+        while self.__is_running:
+            # Boucle sur tous les événements gérés par Pygame
+            for event in pygame.event.get():
+                # Test de l'état du type d'événement de Pygame
+                if event.type == pygame.QUIT:
+                    # Mettre la variable de contrôle d'activité de l'application à `False`
+                    self.__is_running = False
+                    # Arrêter tous les éléments de Pygame
+                    pygame.quit()
+
+
+# Instancier le jeu
+game = Game()
+# Démarrer le jeu
+game.run()
