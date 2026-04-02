@@ -6,32 +6,7 @@ import pygame
 # Définir la taille de la fenêtre de Pygame en pixels
 WINDOW_SIZE: tuple[int, int]  = (480, 360)
 
-class Actor:
-    _position: pygame.Vector2
-    _speed: pygame.Vector2
-    
-    def __init__(self, position: pygame.Vector2, speed: pygame.Vector2) -> None:
-        self._position = position
-        self._speed = speed
 
-    @property
-    def position(self) -> pygame.Vector2:
-        return self._position
-
-    @property
-    def speed(self) -> pygame.Vector2:
-        return self._speed
-
-    @speed.setter
-    def speed(self, speed: pygame.Vector2) -> None:
-        self._speed = speed
-
-    def _move(self) -> None:
-        self._position += self._speed
-
-    def update(self) -> None:
-        self._move()
-        
 # Définir la classe de l'application elle-même
 class Game:
     __screen: pygame.Surface # attribut de l'écran Pygame de l'application
