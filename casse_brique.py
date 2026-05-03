@@ -1,9 +1,23 @@
+# Message au prof: Vous pouvez ignorer les notes informatives, je (Wissam) les ai faites générer
+# par IA pour faciliter la relecture lors de la reprise du travail.
+# Il me semble que ce soit une utilisation apropriée et tolérée de l'IA mais elles seront tout de même
+# effacées en fin de projet.
+
+# 03.05:j'ai fait une class ball avec la class ballsprite et j'ai mis les 
+#  fonctions d'iversions de la vitesse. pour l'instant y a le rebond avec le sol aussi 
+#  mais on remplacera ça par un game over plus tard. 
+#  Pour info, la fonction isinstance permet de verifier si qqch appartient à une classe 
+#  elle rend True ou false ce qui dans notre cas est une condition pour que ça rebondisse
+#  sans ça je pense que la raquette rebondira aussi.
+
 import pygame
 import sys
 
+# Configuration de la fenêtre et des bords du jeu
+
 WINDOW_SIZE: tuple[int, int]  = (1280, 720)
 WINDOW_TITLE: str = "pygame_step_05" 
-FPS: int = 6
+FPS: int = 60
 WINDOW_BORDERS_NAME: list[str] = ["left", "right", "top", "bottom"]
 WINDOW_BORDER_LINE_OFFSET: int = 2
 WINDOW_BORDERS_COLOR: dict[str, str] = {
@@ -23,12 +37,10 @@ class Actor:
         self.__size = size
         self.__speed = speed
 
-    # Getter nécessaire pour la classe ActorPseudoSprite
     @property
     def position(self) -> pygame.Vector2:
         return self.__position
 
-    # Getter nécessaire pour la classe ActorPseudoSprite
     @property
     def size(self) -> pygame.Vector2:
         return self.__size
@@ -36,46 +48,39 @@ class Actor:
     def __move(self) -> None:
         self.__position += self.__speed
 
-    # Modifier l'acteur
     def update(self) -> None:
         self.__move()
     
-# Définir la représenttaion graphique des acteurs sur l'écran
+# Représentation graphique d'un acteur dans le jeu
 class ActorPseudoSprite:
     __actor: Actor
     __color: pygame.Color
-    __image: pygame.Surface # Zone de dessin de l'acteur 
-    __rect: pygame.Rect #Pour le déplacement de la raquette 
+    __image: pygame.Surface
+    __rect: pygame.Rect
 
     def __init__(self, actor: Actor, color: pygame.Color) -> None:
         self.__actor = actor
         self.__color = color
-        self.__init_image()
-        self.__init_rect()
+        self._init_image()
+        self._init_rect()
 
-    # Définir l'image affichée pour l'acteur
-    def __init_image(self) -> None:
-        # Créer une surface pour déposer l'image de l'acteur
+    def _init_image(self) -> None:
+        # Créer l'image du sprite et dessiner un rectangle blanc pour la raquette
         self.__image = pygame.Surface(self.__actor.size)
-        # Dessin de la raquette
         pygame.draw.rect(self.__image, self.__color, ((0, 0), self.__actor.size))
 
-    # Définir le rectangle qui recevra l'image de l'acteur
-    def __init_rect(self) -> None:
-        # Créer un rectangle à partir de l'image
+    def _init_rect(self) -> None:
+        # Configurer le rectangle de collision et de dessin à la bonne position
         self.__rect = self.__image.get_rect()
-
-        # Déplacer le rectangle à la position de l'acteur
         self.__rect.update(
             self.__actor.position.x,
             self.__actor.position.y,
             self.__actor.size.x,
             self.__actor.size.y
         )
+
     def update(self) -> None:
         self.__actor.update()
-
-        # Déplacer le rectangle à la position de l'acteur
         self.__rect.update(
             self.__actor.position.x,
             self.__actor.position.y,
@@ -83,7 +88,6 @@ class ActorPseudoSprite:
             self.__actor.size.y
         )
       
-    # Dessiner l'image de l'acteur sur la surface indiquée
     def draw(self, surface: pygame.Surface) -> None:
         surface.blit(self.__image, self.__rect.topleft)
 
@@ -91,45 +95,28 @@ class ActorPseudoSprite:
     def rect(self) -> pygame.Rect:
         return self.__rect
 
-class Game:
-    __screen: pygame.Surface # attribut de l'écran Pygame de l'application
-    __is_running: bool # attribut de contrôle de l'activation de l'application
-    __clock: pygame.time.Clock #horloge du jeu
-    __actors_pseudo_sprites: list[ActorPseudoSprite]
+class Ball(Actor):
+    # Comportement spécifique de la balle : inversion de la vitesse sur un rebond
+    def bounce_x(self) -> None:
+        self._Actor__speed.x = -self._Actor__speed.x
+    
+    def bounce_y(self) -> None:
+        self._Actor__speed.y = -self._Actor__speed.y
 
-    def __init__(self) -> None:
-        pygame.init()
-        self.__clock = pygame.time.Clock()
-        self.__is_running = False
-        self.__init_screen()
-        self.__init_actors()
+class BallSprite(ActorPseudoSprite):
+    def _init_image(self) -> None:
+        # Créer une surface transparente pour la balle et dessiner un cercle jaune
+        self._ActorPseudoSprite__image = pygame.Surface(self._ActorPseudoSprite__actor.size, pygame.SRCALPHA)
+        self._ActorPseudoSprite__image.fill((0, 0, 0, 0))
 
-    def __init_screen(self) -> None:
-        self.__screen = pygame.display.set_mode(WINDOW_SIZE)
-        pygame.display.set_caption(WINDOW_TITLE)
-
-    def __init_actors(self) -> None:
-        self.__actors = []
-        self.__actors_pseudo_sprites = []
-        actor = Actor(
-            pygame.Vector2(590, 450),   # position de la raquette
-            pygame.Vector2(100, 10),    # taille de la raquette
-            pygame.Vector2(0, 0)        # vitesse nulle pour l'instant
+        center = pygame.Vector2(self._ActorPseudoSprite__actor.size) / 2
+        radius = min(self._ActorPseudoSprite__actor.size.x, self._ActorPseudoSprite__actor.size.y) / 2
+        pygame.draw.circle(
+            self._ActorPseudoSprite__image,
+            self._ActorPseudoSprite__color,
+            (int(center.x), int(center.y)),
+            int(radius)
         )
-
-        self.__actors.append(actor)
-        actor_pseudo_sprite = ActorPseudoSprite(
-                actor,
-                pygame.Color(255, 255, 255)
-        )
-        self.__actors_pseudo_sprites.append(actor_pseudo_sprite)
-        
-    # Méthode fondamentale utilisée pour exécuter une application Pygame
-    def __handle_events(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.QUIT:
-            self.__is_running = False
-            pygame.quit()
-            exit()
 
 class Game:
     __screen: pygame.Surface
@@ -153,20 +140,23 @@ class Game:
     def __init_actors(self) -> None:
         self.__actors_pseudo_sprites = []
 
-        # Création de la raquette
+        # Créer la raquette et son sprite blanc
         actor = Actor(
-            pygame.Vector2(590, 700),  # position de la raquette
-            pygame.Vector2(100, 10),   # taille de la raquette
-            pygame.Vector2(0, 0)       # vitesse nulle pour l'instant
+            pygame.Vector2(590, 700),
+            pygame.Vector2(100, 10),
+            pygame.Vector2(0, 0)
         )
-
-        # Création de l'affichage de la raquette
-        actor_sprite = ActorPseudoSprite(
-            actor,
-            pygame.Color("white")
-        )
-
+        actor_sprite = ActorPseudoSprite(actor, pygame.Color("white"))
         self.__actors_pseudo_sprites.append(actor_sprite)
+
+        # Créer la balle et son sprite circulaire
+        ball = Ball(
+            pygame.Vector2(640, 360),
+            pygame.Vector2(20, 20),
+            pygame.Vector2(5, -5)
+        )
+        ball_sprite = BallSprite(ball, pygame.Color("yellow"))
+        self.__actors_pseudo_sprites.append(ball_sprite)
 
     def __handle_events(self, event: pygame.event.Event) -> None:
         if event.type == pygame.QUIT:
@@ -176,13 +166,11 @@ class Game:
 
     # Créer les bords de l'écran
     def __draw_screen_borders(self) -> None:
-        # Initialiser le dictionnaire des lignes des bords
+        # Préparer les lignes de bordures affichées à l'écran
         self.__screen_borders_lines = {}
 
-        # Récupérer le rectangle de l'écran
         screen_rect = self.__screen.get_rect()
 
-        # Définir les caractéristiques des bords
         screen_borders = {
             "left": {
                 "offset": pygame.Vector2(+1, 0),
@@ -220,22 +208,34 @@ class Game:
 
             self.__screen_borders_lines[border_name] = border_line
 
-    # Détecter les collisions avec les bords
+    # Détecter les collisions avec les bords et faire rebondir la balle
     def __handle_borders_collisions(self) -> None:
         screen_rect = self.__screen.get_rect()
 
         for actor_pseudo_sprite in self.__actors_pseudo_sprites:
             if "left" in WINDOW_BORDERS_NAME and actor_pseudo_sprite.rect.left < screen_rect.left + WINDOW_BORDER_LINE_OFFSET:
-                print("Collision at left !")
+                if isinstance(actor_pseudo_sprite, BallSprite):
+                    actor_pseudo_sprite._ActorPseudoSprite__actor.bounce_x()
+                else:
+                    print("Collision at left !")
 
             if "right" in WINDOW_BORDERS_NAME and actor_pseudo_sprite.rect.right > screen_rect.right - WINDOW_BORDER_LINE_OFFSET:
-                print("Collision at right !")
+                if isinstance(actor_pseudo_sprite, BallSprite):
+                    actor_pseudo_sprite._ActorPseudoSprite__actor.bounce_x()
+                else:
+                    print("Collision at right !")
 
             if "top" in WINDOW_BORDERS_NAME and actor_pseudo_sprite.rect.top < screen_rect.top + WINDOW_BORDER_LINE_OFFSET:
-                print("Collision at top !")
+                if isinstance(actor_pseudo_sprite, BallSprite):
+                    actor_pseudo_sprite._ActorPseudoSprite__actor.bounce_y()
+                else:
+                    print("Collision at top !")
 
             if "bottom" in WINDOW_BORDERS_NAME and actor_pseudo_sprite.rect.bottom > screen_rect.bottom - WINDOW_BORDER_LINE_OFFSET:
-                print("Collision at bottom !")
+                if isinstance(actor_pseudo_sprite, BallSprite):
+                    actor_pseudo_sprite._ActorPseudoSprite__actor.bounce_y()
+                else:
+                    print("Collision at bottom !")
 
     # Mettre à jour les acteurs
     def __update_actors(self) -> None:
@@ -247,6 +247,7 @@ class Game:
         for actor_pseudo_sprite in self.__actors_pseudo_sprites:
             actor_pseudo_sprite.draw(self.__screen)
 
+    # Boucle principale du jeu : événements, mise à jour, dessin
     def run(self) -> None:
         self.__is_running = True
 
