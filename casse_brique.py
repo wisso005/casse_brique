@@ -3,7 +3,7 @@ import sys
 
 WINDOW_SIZE: tuple[int, int]  = (1280, 720)
 WINDOW_TITLE: str = "pygame_step_05" 
-FPS: int = 6
+FPS: int = 60
 WINDOW_BORDERS_NAME: list[str] = ["left", "right", "top", "bottom"]
 WINDOW_BORDER_LINE_OFFSET: int = 2
 WINDOW_BORDERS_COLOR: dict[str, str] = {

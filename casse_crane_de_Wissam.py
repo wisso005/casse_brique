@@ -1,103 +1,38 @@
-import json
-import os
 import pygame
-import random
 import sys
 
+WINDOW_SIZE: tuple[int, int]  = (1280, 720)
+WINDOW_TITLE: str = "pygame_step_05" 
+FPS: int = 60
+WINDOW_BORDERS_NAME: list[str] = ["left", "right", "top", "bottom"]
+WINDOW_BORDER_LINE_OFFSET: int = 2
+WINDOW_BORDERS_COLOR: dict[str, str] = {
+    "left": "red",
+    "right": "red",
+    "top": "red",
+    "bottom": "red"
+}
 
-WINDOW_SIZE: pygame.Vector2 = pygame.Vector2(480, 360)
-WINDOW_TITLE: str = str(os.path.basename(__file__)).replace(".py", "")
-WINDOW_BORDER_LINE_OFFSET: int = int(WINDOW_SIZE.x // 96)
-WINDOW_BORDERS_NAME: list[str] = ["left", "right", "top"]
-WINDOW_BORDERS_COLOR: dict[str, str] = {"left" : "red", "right" : "blue", "top" : "yellow", "bottom" : "grey"}
-GAME_COLOR: pygame.Color = pygame.Color(pygame.color.THECOLORS["black"])
-TEXT_SIZE: int = int(WINDOW_SIZE.x // 12)
-FPS: int = 24
-NULL_PYGAME_VECTOR2: pygame.Vector2 = pygame.Vector2(0, 0)
-SPACESHIP = {
-             "size":  WINDOW_SIZE // 8,
-             "speed": pygame.Vector2(WINDOW_SIZE.x // 72, 0)
-            }
-ASTEROIDS = {
-             "diameter": 
-             "max_speed":    int(WINDOW_SIZE.x // 180)
-            }
-
-BALL     = {
-             "side":  int(WINDOW_SIZE.y // 90),
-             "speed": pygame.Vector2(0, -WINDOW_SIZE.y // 90)
-            }
-PLAYER_NAMES: list[str] = ["Alice", "Bob", "Carla", "Debian", "Eve", "Fred", "Gaston", "Hermione"]
-MAX_LEVEL: int = 2
-ONE_SHOOT_LEVEL = 2
-
-
-class Player:
-    __name: str
-    __score: int
-
-    def __init__(self, name: str, score: int) -> None:
-        self.__name = name
-        self.__score = score
-
-    @property
-    def name(self) -> str:
-        return self.__name
-
-    @property
-    def score(self) -> int:
-        return self.__score
-
-    @score.setter
-    def score(self, score: int) -> None:
-        self.__score = score
-
-class Scoreboard:
-    __players: list[Player]
-
-    def __init__(self) -> None:
-        self.__players = []
-
-    @property
-    def players(self) -> list[Player]:
-        return self.__players
-
-    def add_score(self, name: str, score: int) -> None:
-        self.__players.append(Player(name, score))
-        self.__players.sort(key=lambda player: player.score, reverse=True)
-        self.__players = self.__players[:5]
-
-    def save_score(self) -> None:
-        data = []
-        for player in self.__players:
-            data.append({"name": player.name, "score": player.score})
-        score_file = open("scores.json", "w")
-        score_json = json.dumps(data, indent = 4)
-        score_file.write(score_json)
-        score_file.close()
-
-    def load_score(self) -> None:
-        if os.path.isfile("scores.json"):
-            score_file = open("scores.json", "r")
-            data = json.load(score_file)
-            for line in data:
-                self.__players.append(Player(line["name"], line["score"]))
-            score_file.close()
-        else:
-            self.save_score()
-
+NULL_PYGAME_VECTOR2: pygame.Vector2 = pygame.Vector2()
+PADDLE: dict[str, pygame.Vector2] = {
+    "speed": pygame.Vector2(10, 0)
+}
 
 class Actor:
-    _position: pygame.Vector2
-    _speed: pygame.Vector2
-    
-    def __init__(self, position: pygame.Vector2, speed: pygame.Vector2) -> None:
+    def __init__(self, position: pygame.Vector2, size: pygame.Vector2, speed: pygame.Vector2) -> None:
         self._position = position
+        self._size = size
         self._speed = speed
+        self._alive = True
 
+    # Accesseurs public, protégés par l'encapsulation
     @property
     def position(self) -> pygame.Vector2:
         return self._position
+
+    @property
+    def size(self) -> pygame.Vector2:
+        return self._size
 
     @property
     def speed(self) -> pygame.Vector2:
@@ -107,105 +42,79 @@ class Actor:
     def speed(self, speed: pygame.Vector2) -> None:
         self._speed = speed
 
-    def _move(self) -> None:
+    def set_size(self, size: pygame.Vector2) -> None:
+        self._size = size
+
+    def set_speed(self, speed: pygame.Vector2) -> None:
+        self._speed = speed
+
+    def move(self) -> None:
         self._position += self._speed
 
     def update(self) -> None:
-        self._move()
+        self.move()
+        self.on_update()
 
+    # Hooks que les sous-classes peuvent implémenter
+    def on_update(self) -> None:
+        pass
 
-class Spaceship(Actor):
-    __size: pygame.Vector2
+    def on_collide_border(self, border_name: str) -> None:
+        pass
 
-    def __init__(self, position: pygame.Vector2, size: pygame.Vector2, speed: pygame.Vector2) -> None:
-        super().__init__(position, speed)
-        self.__size = size
+    def on_collide_actor(self, other: "Actor") -> None:
+        pass
 
-    @property
-    def size(self) -> pygame.Vector2:
-        return self.__size
+    def destroy(self) -> None:
+        self._alive = False
 
-    @property
-    def position(self) -> pygame.Vector2:
-        return self._position
+    def is_alive(self) -> bool:
+        return self._alive
 
-    @position.setter
-    def position(self, position: pygame.Vector2) -> None:
-        offset_x = self.__size.x // 2
-        if offset_x + WINDOW_BORDER_LINE_OFFSET <= position.x <= WINDOW_SIZE.x - offset_x - WINDOW_BORDER_LINE_OFFSET:
-            self._position.x = position.x - offset_x
-        else:
-            if position.x < offset_x:
-                self._position.x = WINDOW_BORDER_LINE_OFFSET
-            if position.x > WINDOW_SIZE.x - offset_x:
-                self._position.x = WINDOW_SIZE.x - 2 * offset_x - WINDOW_BORDER_LINE_OFFSET
-
-
-class Asteroid(Actor):
-    __diameter: 
-
-    def __init__(self, position: pygame.Vector2, diameter: int, speed: pygame.Vector2) -> None:
-        super().__init__(position, speed)
-        self.__diameter = diameter
-
-    @property
-    def diameter(self) -> int:
-        return self.__diameter
-
-    @diameter.setter
-    def diameter(self, diameter: int) -> None:
-        if diameter < 0:
-            self.__diameter = ASTEROIDS["min_diameter"]
-        elif diameter > ASTEROIDS["max_diameter"]:
-            self.__diameter = ASTEROIDS["max_diameter"]
-        else:
-            self.__diameter = diameter
-
-    @property
-    def radius(self) -> int:
-        return self.__diameter // 2
-
-    def resize_on_center(self, delta_diameter: int) -> None:
-        delta_radius = delta_diameter // 2
-        self.diameter = self.__diameter + delta_diameter
-        self._position += pygame.Vector2(-delta_radius, -delta_radius)
-
-class Ball(Actor):
-    __side: int
-
-    def __init__(self, position: pygame.Vector2, side: int, speed: pygame.Vector2) -> None:
-        super().__init__(position, speed)
-        self.__side = side
-
-    @property
-    def side(self) -> int:
-        return self.__side
-
-
-class ActorSprite(pygame.sprite.Sprite):
+# Définir la représenttaion graphique des acteurs sur l'écran
+class ActorPseudoSprite(pygame.sprite.Sprite):
     _actor: Actor
     _color: pygame.Color
     _image: pygame.Surface
     _rect: pygame.Rect
 
-    def __init__(self, actor: Actor, color: pygame.Color, *groups: pygame.sprite.Group) -> None:
+    def __init__(
+            self,
+            actor : Actor,
+            color : pygame.Color, 
+            *groups : pygame.sprite.Group
+    )-> None : 
         super().__init__(*groups)
         self._actor = actor
-        self._color = color
-        self._init_image()
+        self._color = color 
+        self._init_image() 
         self._init_rect()
 
-    @property
-    def actor(self) -> Actor:
-        return self._actor
+    # Définir l'image affichée pour l'acteur
+    def _init_image(self) -> None:
+        # Créer une surface pour déposer l'image de l'acteur
+        size = (int(self._actor.size.x), int(self._actor.size.y))
+        # Utiliser SRCALPHA pour permettre la transparence si nécessaire
+        # SRCALPHA rend la sprite plus polyvalente pour les formes non rectangulaires
+        self._image = pygame.Surface(size, pygame.SRCALPHA)
+        # Dessin de la raquette (adapté à la taille entière)
+        pygame.draw.rect(self._image, self._color, ((0, 0), size))
 
-    @property
-    def color(self) -> pygame.Color:
-        return self._color
-
-    @color.setter
-    def color(self, color: pygame.Color) -> None:
-        self._color = color
+    # Définir le rectangle qui recevra l'image de l'acteur
+    def _init_rect(self) -> None:
+        # Créer un rectangle à partir de l'image
+        self._rect = self._image.get_rect()
+        # Déplacer le rectangle à la position de l'acteur (entiers)
+        self._rect.update(
+            int(self._actor.position.x),
+            int(self._actor.position.y),
+            int(self._actor.size.x),
+            int(self._actor.size.y)
+        )
+    
+    # Dessiner l'image de l'acteur sur la surface indiquée
+    def draw(self, surface: pygame.Surface) -> None:
+        surface.blit(self._image, self._rect.topleft)
 
     @property
     def image(self) -> pygame.Surface:
@@ -214,568 +123,374 @@ class ActorSprite(pygame.sprite.Sprite):
     @property
     def rect(self) -> pygame.Rect:
         return self._rect
-
-    def _init_image(self) -> None:
-        raise NotImplementedError("Les sous-classes doivent implémenter _init_image()")
-
-    def _paint_image(self) -> None:
-        # raise NotImplementedError("Les sous-classes doivent implémenter paint_image()")
-        self._image.fill(GAME_COLOR)
-        self._image.set_colorkey(GAME_COLOR)
-
-    def _init_rect(self) -> None:
-        self._rect = self._image.get_rect()
-        self._rect.update(self._actor.position, self._rect.size)
-
+    
+    @property
+    def actor(self) -> Actor:
+        return self._actor
+   
     def update(self) -> None:
-        raise NotImplementedError("Les sous-classes doivent implémenter update()")
-
-
-class SpaceshipSprite(ActorSprite):
-    _actor: Spaceship
-    __sprite_image_filename: str
-    __sprite_image: pygame.Surface | None
-
-    def __init__(self, spaceship: Spaceship, color: pygame.Color, **kwargs) -> None:
-        self.__sprite_image_filename = kwargs.get('sprite_image_filename')
-        super().__init__(spaceship, color)
-
-    def _init_image(self) -> None:
-        self.__sprite_image = None
-        self._image = pygame.Surface(self._actor.size)
-        if self.__sprite_image_filename is not None:
-            if os.path.isfile(self.__sprite_image_filename):
-                loaded_sprite_image = pygame.image.load(self.__sprite_image_filename).convert_alpha()
-                self.__sprite_image = pygame.transform.scale(loaded_sprite_image, self._actor.size)
-        self._paint_image()
-
-    def _paint_image(self) -> None:
-        super()._paint_image()
-        if self.__sprite_image is None:
-            pygame.draw.rect(self._image, self._color, ((0, 0), self._actor.size))
-        else:
-            self._image.set_alpha(255)
-            self._image.blit(self.__sprite_image, (0, 0))
-
-    def update(self) -> None:
+        # Mettre à jour le modèle
+        prev_size = (int(self._rect.w), int(self._rect.h)) if hasattr(self, "_rect") else None
         self._actor.update()
-        self._rect.update(self._actor.position, self._actor.size)
 
-class AsteroidSprite(ActorSprite):
-    _actor: Asteroid
-    __hinted: bool
-    __hintable_time: int
-    __unhintable_time: int
-    __unhintable: bool
-    __clock_ticks: int
+        new_size = (int(self._actor.size.x), int(self._actor.size.y))
+        # Si la taille a changé, régénérer l'image et le rect
+        if prev_size is None or new_size != prev_size:
+            self._init_image()
+            self._init_rect()
+        # Mettre à jour la position du rect
+        self._rect.topleft = (int(self._actor.position.x), int(self._actor.position.y))
 
-    def __init__(self, asteroid: Asteroid, *groups: pygame.sprite.Group) -> None:
-        self.__hinted = False
-        self.__unhintable = False
-        self.__clock_ticks = 0
-        super().__init__(asteroid, pygame.Color(pygame.color.THECOLORS["cyan"]), *groups)
+class Ball(Actor):
+    def bounce_x(self) -> None:
+        self.speed.x = -self.speed.x
+
+    def bounce_y(self) -> None:
+        self.speed.y = -self.speed.y
+    
+    def on_collide_border(self, border_name: str) -> None:
+        if border_name in ("left", "right"):
+            self.bounce_x()
+        elif border_name == "top":
+            self.bounce_y()
+        elif border_name == "bottom":
+            # La balle est perdue
+            self.destroy()
+
+    def on_collide_actor(self, other: "Actor", collision_axis: str | None = None) -> None:
+        # Si c'est une raquette, rebondir avec angle selon position de contact
+        if isinstance(other, Paddle):
+            paddle_left = other.position.x
+            paddle_right = other.position.x + other.size.x
+            paddle_center_x = (paddle_left + paddle_right) / 2
+            ball_center_x = self.position.x + self.size.x / 2
+            paddle_width = other.size.x / 2
+            position_ratio = (ball_center_x - paddle_center_x) / paddle_width
+            position_ratio = max(-1, min(1, position_ratio))
+
+            self.bounce_y()
+            max_horizontal_speed = abs(self.speed.y)
+            self.speed.x = position_ratio * max_horizontal_speed
+        else:
+            if collision_axis == "horizontal":
+                self.bounce_x()
+            else:
+                self.bounce_y()
+
+class Paddle(Actor):
+    @property
+    def position(self) -> pygame.Vector2:
+        return self._position
+
+    @position.setter
+    def position(self, position: pygame.Vector2) -> None:
+        half_width = self.size.x / 2
+        if half_width + WINDOW_BORDER_LINE_OFFSET <= position.x <= WINDOW_SIZE[0] - half_width - WINDOW_BORDER_LINE_OFFSET:
+            self._position.x = position.x - half_width
+        elif position.x < half_width + WINDOW_BORDER_LINE_OFFSET:
+            self._position.x = WINDOW_BORDER_LINE_OFFSET
+        else:
+            self._position.x = WINDOW_SIZE[0] - self.size.x - WINDOW_BORDER_LINE_OFFSET
+
+    def apply_size_modifier(self, factor: float) -> None:
+        new_size = pygame.Vector2(self.size.x * factor, self.size.y)
+        self.set_size(new_size)
+
+    def on_update(self) -> None:
+        min_x = WINDOW_BORDER_LINE_OFFSET
+        max_x = WINDOW_SIZE[0] - self.size.x - WINDOW_BORDER_LINE_OFFSET
+        if self._position.x < min_x:
+            self._position.x = min_x
+        elif self._position.x > max_x:
+            self._position.x = max_x
+
+class BallSprite(ActorPseudoSprite):
+
+    def __init__(
+            self,
+            actor: Actor,
+            color: pygame.Color,
+            *groups: pygame.sprite.Group 
+    ) -> None:
+        super().__init__(actor, color, *groups)
+
+    def _init_image(self) -> None:
+        size = (int(self._actor.size.x), int(self._actor.size.y))
+        self._image = pygame.Surface(size, pygame.SRCALPHA)
+
+        center = (size[0] // 2, size[1] // 2)
+        radius = min(size[0], size[1]) // 2
+
+        pygame.draw.circle(
+            self._image,
+            pygame.Color("green"),
+            center,
+            radius
+        )
+
+class Brick(Actor):
+
+    __health: int
+
+    def __init__(
+        self,
+        position: pygame.Vector2,
+        size: pygame.Vector2,
+        speed: pygame.Vector2,
+        health: int
+    ) -> None:
+        super().__init__(position, size, speed)
+        self.__health = health
 
     @property
-    def hinted(self) -> bool:
-        return self.__hinted
+    def health(self) -> int:
+        return self.__health
 
-    @hinted.setter
-    def hinted(self, hinted: bool) -> None:
-        self.__hinted = hinted
+    def hit(self) -> None:
+        self.__health -= 1
 
-    @property
-    def unhintable(self) -> bool:
-        return self.__unhintable
-
-    def _init_image(self) -> None:
-        self._image = pygame.Surface((self._actor.diameter, self._actor.diameter))
-        self._paint_image()
-
-    def _paint_image(self) -> None:
-        super()._paint_image()
-        pygame.draw.circle(self._image, self._color, (self._actor.radius, self._actor.radius), self._actor.radius, width = 1)
-        if self.__unhintable:
-            pygame.draw.rect(self._image, self._color, self._image.get_rect(), width = 1)
-
-    def _refresh_image(self) -> None:
-        self._init_image()
-        self._init_rect()
-
-    def update(self) -> None:
-        self.__clock_ticks += 1
-        if self.__unhintable:
-            if self.__clock_ticks == 1:
-                self._color = pygame.color.THECOLORS["grey"]
-                self.__unhintable_time = random.randint(1, 2) * FPS
-            if self.__clock_ticks > self.__unhintable_time:
-                self.__unhintable = False
-                self.__clock_ticks = 0
-        else:
-            if self.__clock_ticks == 1:
-                self._color = pygame.color.THECOLORS["cyan"]
-                self.__hintable_time = int(1.5 * FPS)
-            if self.__clock_ticks > self.__hintable_time:
-                self.__clock_ticks = 0
-                self.__unhintable = True
-        if self.__hinted or self.__clock_ticks == 1:
-            self._refresh_image()
-            self.__hinted = False
-        self._actor.update()
-        self._rect.update(self._actor.position, (self._actor.diameter, self._actor.diameter))
-
-
-class BallSprite(ActorSprite):
-    _actor: Ball
-
-    def __init__(self, ball: Ball, color: pygame.Color, *groups: pygame.sprite.Group) -> None:
-        super().__init__(ball, color, *groups)
-
-    def _init_image(self) -> None:
-        self._image = pygame.Surface((self._actor.side, self._actor.side))
-        self._paint_image()
-
-    def _paint_image(self) -> None:
-        super()._paint_image()
-        self._image.fill(self._color)
-
-    def update(self) -> None:
-        self._actor.update()
-        self._rect.update(self._actor.position, (self._actor.side, self._actor.side))
-
-
-class Button(pygame.sprite.Sprite):
-    __position: pygame.Vector2
-    __size: pygame.Vector2
-    __color: pygame.Color
-    __text_color: pygame.Color
-    __text: str
-    image: pygame.Surface
-    rect: pygame.Rect
-
-    def __init__(self, position: pygame.Vector2, text_color: pygame.Color, color: pygame.Color, text: str, *groups: pygame.sprite.Group) -> None:
-        super().__init__(*groups)
-        self.__position = position
-        self.__size = pygame.Vector2(len(text) * TEXT_SIZE // 2, TEXT_SIZE * 1)
-        self.__color = color
-        self.__text_color = text_color
-        self.__text = text
-        self.__init_button()
-
-    def __init_button(self) -> None:
-        self.image = pygame.Surface(self.__size)
-        self.rect = self.image.get_rect()
-        pygame.draw.rect(self.image, self.__color, ((0,0), self.__size), width = 2, border_radius = 5)
-        font = pygame.font.SysFont(None, TEXT_SIZE)
-        text_render = font.render(self.__text, True, self.__text_color)
-        self.image.blit(text_render, (self.rect.centerx - text_render.get_rect().width // 2, self.rect.centery - text_render.get_rect().height // 2))
-        self.update()
-
-    def center_at_width(self) -> None:
-        self.__position = pygame.Vector2(self.rect.left - self.rect.width // 2, self.rect.top)
-        self.update()
-
-    def center_at_height(self) -> None:
-        self.__position = pygame.Vector2(self.rect.left, self.rect.top - self.rect.height // 2)
-        self.update()
-
-    def update(self) -> None:
-        self.rect.update(self.__position, self.__size)
+class BrickSprite(ActorPseudoSprite):
+    pass
 
 class Game:
     __screen: pygame.Surface
-    __screen_rect: pygame.Rect
     __screen_borders_lines: dict[str, pygame.Rect]
     __is_running: bool
     __clock: pygame.time.Clock
-    __level_clock_ticks: int
-    __frame_counter: int
-    __game_state: str
-    __level: int
-    __spaceship_sprite: pygame.sprite.GroupSingle
-    __asteroids_sprites: pygame.sprite.Group
-    __borders_collision_sprites: pygame.sprite.Group
-    __balls_sprite: pygame.sprite.Group
-    __shoot_ball: bool
-    __start_buttons: pygame.sprite.Group
-    __end_buttons: pygame.sprite.Group
-    __player: Player
-    __scores: Scoreboard
+    __paddles_sprites: pygame.sprite.GroupSingle #une seule raquette 
+    __balls_sprites: pygame.sprite.Group
+    __bricks_sprites: pygame.sprite.Group
 
     def __init__(self) -> None:
         pygame.init()
         self.__clock = pygame.time.Clock()
-        self.__level = 0
-        self.__frame_counter = 0
         self.__is_running = False
         self.__init_screen()
-        self.__game_state = "start"
+        self.__init_actors()
 
     def __init_screen(self) -> None:
         self.__screen = pygame.display.set_mode(WINDOW_SIZE)
         pygame.display.set_caption(WINDOW_TITLE)
-        self.__screen_rect = self.__screen.get_rect()
 
-    def __init_start(self) -> None:
-        self.__init_start_buttons()
-        self.__player = Player(random.choice(PLAYER_NAMES), 0)
-        self.__scores = Scoreboard()
-        self.__scores.load_score()
+    # Initialiser les acteurs du jeu
+    def __init_actors(self) -> None:
+        self.__paddles_sprites = pygame.sprite.GroupSingle()
+        self.__balls_sprites = pygame.sprite.Group()
+        self.__bricks_sprites = pygame.sprite.Group()
 
-    def __init_start_buttons(self) -> None:
-        self.__start_buttons = pygame.sprite.Group()
-        Button(
-               pygame.Vector2(self.__screen_rect.center),
-               pygame.Color(pygame.color.THECOLORS["green"]),
-               pygame.Color(pygame.color.THECOLORS["white"]),
-               "Play",
-               self.__start_buttons
-              )
-        self.__start_buttons.sprites()[0].center_at_width()
-        self.__start_buttons.sprites()[0].center_at_height()
+        # Création de la raquette
+        actor = Paddle(
+            pygame.Vector2(590, 700),  # position de la raquette
+            pygame.Vector2(100, 10),   # taille de la raquette
+            pygame.Vector2(0, 0)       # vitesse nulle pour l'instant
+        )
 
-    def __handle_start_events(self, event: pygame.event.Event) -> None:
+        # Création de l'affichage de la raquette
+        ActorPseudoSprite(
+            actor,
+            pygame.Color("white"),
+            self.__paddles_sprites
+            )
+
+        # Création de la balle
+        ball = Ball(
+            pygame.Vector2(640, 680),
+            pygame.Vector2(10, 10),
+            pygame.Vector2(10, -10)
+        )
+        # Affichage de la balle
+        BallSprite(
+            ball,
+            pygame.Color("green"),
+            self.__balls_sprites
+            )
+        
+        for row in range(3):
+            for col in range(14):
+                brick = Brick(
+                    pygame.Vector2(45 + col * 85, 100 + row * 20),
+                    pygame.Vector2(80, 15),
+                    pygame.Vector2(0, 0),
+                    3
+                )
+
+                BrickSprite(
+                    brick,
+                    pygame.Color("red"),
+                    self.__bricks_sprites
+                )
+
+    def __handle_events(self, event: pygame.event.Event) -> None:
         match event.type:
-            case pygame.MOUSEBUTTONDOWN:
-                if self.__start_buttons.sprites()[0].rect.collidepoint(event.pos):
-                    self.__game_state = "level"
-                    self.__init_level()
             case pygame.QUIT:
                 self.__is_running = False
                 pygame.quit()
                 sys.exit()
-
-    def __draw_greetings(self) -> None:
-        text = "Hello " + self.__player.name
-        font = pygame.font.SysFont(None, TEXT_SIZE)
-        text_render = font.render(text, True, pygame.Color(pygame.color.THECOLORS["white"]))
-        self.__screen.blit(text_render, (self.__screen_rect.centerx - text_render.get_rect().width // 2, TEXT_SIZE))
-
-    def __draw_start_buttons(self) -> None:
-        self.__draw_greetings()
-        self.__start_buttons.draw(self.__screen)
-
-    def __inside_start_loop(self) -> None:
-        for event in pygame.event.get():
-            self.__handle_start_events(event)
-        self.__draw_start_buttons()
-
-    def __init_level(self) -> None:
-        self.__level += 1
-        self.__level_clock_ticks = self.__frame_counter
-
-    def __inside_level_loop(self) -> None:
-        if self.__frame_counter - self.__level_clock_ticks < 2 * FPS:
-            self.__screen.fill(GAME_COLOR)
-            text = "Level " + str(self.__level)
-            font = pygame.font.SysFont(None, TEXT_SIZE)
-            text_render = font.render(text, True, pygame.Color(255, 0, int(255 // MAX_LEVEL * self.__level) % 255))
-            self.__screen.blit(text_render, (self.__screen_rect.centerx - text_render.get_rect().width // 2,
-                                             self.__screen_rect.centery - text_render.get_rect().height // 2))
-        else:
-            self.__game_state = "play"
-            self.__init_game()
-            self.__frame_counter = 0
-            self.__shoot_ball = False
-
-    def __init_game(self) -> None:
-        self.__init_actors()
-
-    def __init_spaceship(self) -> None:
-        spaceship = Spaceship(
-                       pygame.Vector2(WINDOW_SIZE.x / 2, WINDOW_SIZE.y - SPACESHIP["size"].y),
-                       SPACESHIP["size"],
-                       NULL_PYGAME_VECTOR2.copy()
-                     )
-        spaceship_sprite = SpaceshipSprite(spaceship, pygame.Color(pygame.color.THECOLORS["magenta"]), sprite_image_filename ="spaceship.png")
-        self.__spaceship_sprite = pygame.sprite.GroupSingle(spaceship_sprite)
-        #self.__borders_collision_sprites.add(self.__spaceship_sprite)
-
-    def __init_asteroids(self) -> None:
-        self.__asteroids_sprites = pygame.sprite.Group()
-        initial_vertical_offset = 0
-        for i in range(1 + self.__level):
-            diameter = (4 - i) * ASTEROIDS["min_diameter"]
-            j_max = int((WINDOW_SIZE. x - 2 * WINDOW_BORDER_LINE_OFFSET) // diameter // 2) + 1
-            for j in range(j_max):
-                offset = WINDOW_BORDER_LINE_OFFSET * (1 + 4 * (i % 2))
-                asteroid = Asteroid(
-                                    pygame.Vector2(
-                                                   offset + 2 * j * diameter,
-                                                   initial_vertical_offset + WINDOW_BORDER_LINE_OFFSET + 1
-                                                  ),
-                                    diameter,
-                                    pygame.Vector2(
-                                                   random.randint(-ASTEROIDS["max_speed"], ASTEROIDS["max_speed"]),
-                                                   random.randint(1, ASTEROIDS["max_speed"])
-                                                  )
-                                   )
-                AsteroidSprite(asteroid, self.__asteroids_sprites, self.__borders_collision_sprites)
-            initial_vertical_offset += diameter
-
-    def __init_ball(self) -> None:
-        if self.__spaceship_sprite.sprite is not None:
-            ball = Ball(
-                pygame.Vector2(self.__spaceship_sprite.sprite.rect.centerx - BALL["side"] // 2, self.__spaceship_sprite.sprite.rect.y + BALL["side"]),
-                BALL["side"],
-                BALL["speed"].copy()
-            )
-            BallSprite(ball, pygame.Color(pygame.color.THECOLORS["white"]), self.__balls_sprites, self.__borders_collision_sprites)
-
-    def __init_actors(self) -> None:
-        self.__balls_sprites = pygame.sprite.Group()
-        self.__borders_collision_sprites = pygame.sprite.Group()
-        self.__init_spaceship()
-        self.__init_asteroids()
-
-    def __handle_game_events(self, event: pygame.event.Event) -> None:
-        match event.type:
-            case pygame.MOUSEBUTTONDOWN:
-                if self.__level < ONE_SHOOT_LEVEL:
-                    self.__shoot_ball = True
-                else:
-                    self.__shoot_ball = False
-                    self.__init_ball()
-            case pygame.MOUSEBUTTONUP:
-                self.__shoot_ball = False
             case pygame.MOUSEMOTION:
-                if self.__spaceship_sprite.sprite is not None:
+                if self.__paddles_sprites.sprite is not None:
                     if pygame.mouse.get_focused():
-                        self.__spaceship_sprite.sprite.actor.position = pygame.Vector2(pygame.mouse.get_pos())
-                        if self.__level >= ONE_SHOOT_LEVEL:
-                            for asteroid_sprite in self.__asteroids_sprites:
-                                if pygame.mouse.get_rel()[0] > SPACESHIP["speed"].x:
-                                    asteroid_sprite.actor.speed.y += 1
-            case pygame.KEYDOWN:
+                        self.__paddles_sprites.sprite.actor.position = pygame.Vector2(pygame.mouse.get_pos())
+            case pygame.KEYDOWN: # IL FAUT REGLER LE PROBLEME DES FLECHES LORS DU TRANSFER KEYUP KEYDOWN
                 match event.key:
                     case pygame.K_LEFT:
-                        if self.__spaceship_sprite.sprite is not None:
-                            self.__spaceship_sprite.sprite.actor.speed = -SPACESHIP["speed"].copy()
+                        if self.__paddles_sprites.sprite is not None:
+                            self.__paddles_sprites.sprite.actor.speed = -PADDLE["speed"].copy()
                     case pygame.K_RIGHT:
-                        if self.__spaceship_sprite.sprite is not None:
-                            self.__spaceship_sprite.sprite.actor.speed = SPACESHIP["speed"].copy()
-                    case pygame.K_SPACE:
-                        if self.__level < ONE_SHOOT_LEVEL:
-                            self.__shoot_ball = True
-                        else:
-                            self.__shoot_ball = False
-                            if self.__spaceship_sprite.sprite is not None:
-                                self.__init_ball()
+                        if self.__paddles_sprites.sprite is not None:
+                            self.__paddles_sprites.sprite.actor.speed = PADDLE["speed"].copy()
             case pygame.KEYUP:
                 match event.key:
-                    case pygame.K_LEFT:
-                        if self.__spaceship_sprite.sprite is not None:
-                            self.__spaceship_sprite.sprite.actor.speed = NULL_PYGAME_VECTOR2.copy()
-                    case pygame.K_RIGHT:
-                        if self.__spaceship_sprite.sprite is not None:
-                            self.__spaceship_sprite.sprite.actor.speed = NULL_PYGAME_VECTOR2.copy()
-                    case pygame.K_SPACE:
-                        self.__shoot_ball = False
-            case pygame.QUIT:
-                self.__is_running = False
-                pygame.quit()
-                sys.exit()
+                    case pygame.K_LEFT | pygame.K_RIGHT:
+                        if self.__paddles_sprites.sprite is not None:
+                            self.__paddles_sprites.sprite.actor.speed = NULL_PYGAME_VECTOR2.copy()
 
-    def __detect_borders_collisions(self) -> None:
-        for actor_sprite in self.__borders_collision_sprites:
-            for screen_border_name, screen_border_line in self.__screen_borders_lines.items():
-                if actor_sprite.rect.colliderect(screen_border_line):
-                    if screen_border_name == "left" and actor_sprite.actor.speed.x < 0:
-                        actor_sprite.actor.speed.x = -actor_sprite.actor.speed.x
-                    if screen_border_name == "right" and actor_sprite.actor.speed.x > 0:
-                        actor_sprite.actor.speed.x = -actor_sprite.actor.speed.x
-                    if screen_border_name == "top" and actor_sprite.actor.speed.y < 0:
-                        actor_sprite.actor.speed.y = -actor_sprite.actor.speed.y
-                    if screen_border_name == "bottom" and actor_sprite.actor.speed.y > 0:
-                        actor_sprite.actor.speed.y = -actor_sprite.actor.speed.y
-
-    def __detect_balls_collisions_with_asteroids(self):
-        # hinted_asteroids_sprites = pygame.sprite.groupcollide(self.__asteroids_sprites, self.__balls_sprites, True, True)
-        hinted_asteroids_sprites = pygame.sprite.groupcollide(self.__asteroids_sprites, self.__balls_sprites, False, True)
-        for hinted_asteroid_sprite in hinted_asteroids_sprites:
-            if hinted_asteroid_sprite.actor.diameter <= 10:
-                hinted_asteroid_sprite.kill()
-            else:
-                hinted_asteroid_sprite.color = pygame.color.THECOLORS["yellow"]
-                hinted_asteroid_sprite.actor.resize_on_center(-10)
-
-    def __detect_ball_collisions_with_asteroids(self):
-        if len(self.__balls_sprites) != 0:
-            for ball_sprite in self.__balls_sprites:
-                hinted_asteroids_sprites = pygame.sprite.spritecollide(ball_sprite, self.__asteroids_sprites,False)
-                if len(hinted_asteroids_sprites) != 0:
-                    for hinted_asteroid_sprite in hinted_asteroids_sprites:
-                        if not hinted_asteroid_sprite.unhintable:
-                            if  ball_sprite.rect.top - hinted_asteroid_sprite.rect.bottom <= ball_sprite.rect.height and ball_sprite.actor.speed.y < 0 :
-                                if hinted_asteroid_sprite.actor.diameter <= ASTEROIDS["min_diameter"]:
-                                    self.__player.score += 1
-                                    hinted_asteroid_sprite.kill()
-                                else:
-                                    hinted_asteroid_sprite.actor.resize_on_center(-ASTEROIDS["min_diameter"])
-                                    hinted_asteroid_sprite.color = pygame.color.THECOLORS["green"]
-                                    hinted_asteroid_sprite.hinted = True
-                            elif ball_sprite.rect.top - hinted_asteroid_sprite.rect.bottom <= ball_sprite.rect.height and ball_sprite.actor.speed.y > 0:
-                                hinted_asteroid_sprite.actor.resize_on_center(ASTEROIDS["min_diameter"])
-                                hinted_asteroid_sprite.color = pygame.color.THECOLORS["red"]
-                                hinted_asteroid_sprite.hinted = True
-                            ball_sprite.kill()
-
-    def __detect_spaceship_collisions_with_asteroids(self):
-        killed_spaceship_sprite = pygame.sprite.groupcollide(self.__spaceship_sprite, self.__asteroids_sprites, True, True)
-        if len(killed_spaceship_sprite) > 0:
-            self.__to_next_level_or_end()
-
-    def __detect_asteroid_out_of_game(self):
-        for asteroid_sprite in self.__asteroids_sprites:
-            if not self.__screen_rect.contains(asteroid_sprite.rect):
-                asteroid_sprite.kill()
-        if len(self.__asteroids_sprites) == 0:
-            self.__to_next_level_or_end()
-
-    def __detect_game_collisions(self):
-        self.__detect_borders_collisions()
-        # self.__handle_balls_collisions_with_asteroids()
-        self.__detect_ball_collisions_with_asteroids()
-        self.__detect_spaceship_collisions_with_asteroids()
-        self.__detect_asteroid_out_of_game()
-
-    def __to_next_level_or_end(self):
-        if self.__level < MAX_LEVEL:
-            self.__game_state = "level"
-            self.__init_level()
-        else:
-            self.__scores.add_score(self.__player.name, self.__player.score)
-            self.__scores.save_score()
-            self.__game_state = "end"
-            self.__init_end()
-
-    def __update_actors(self) -> None:
-        self.__spaceship_sprite.update()
-        self.__asteroids_sprites.update()
-        self.__balls_sprites.update()
-
+    # Créer les bords de l'écran
     def __draw_screen_borders(self) -> None:
+        # Initialiser le dictionnaire des lignes des bords
         self.__screen_borders_lines = {}
+
+        # Récupérer le rectangle de l'écran
         screen_rect = self.__screen.get_rect()
+
+        # Définir les caractéristiques des bords
         screen_borders = {
-                          "left":   {"offset": pygame.Vector2(+1, 0), "start": screen_rect.topleft,    "end": screen_rect.bottomleft},
-                          "right":  {"offset": pygame.Vector2(-1, 0), "start": screen_rect.topright,   "end": screen_rect.bottomright},
-                          "top":    {"offset": pygame.Vector2(0, +1), "start": screen_rect.topleft,    "end": screen_rect.topright },
-                          "bottom": {"offset": pygame.Vector2(0, -1), "start": screen_rect.bottomleft, "end": screen_rect.bottomright}
+            "left": {
+                "offset": pygame.Vector2(+1, 0),
+                "start": screen_rect.topleft,
+                "end": screen_rect.bottomleft
+            },
+            "right": {
+                "offset": pygame.Vector2(-1, 0),
+                "start": screen_rect.topright,
+                "end": screen_rect.bottomright
+            },
+            "top": {
+                "offset": pygame.Vector2(0, +1),
+                "start": screen_rect.topleft,
+                "end": screen_rect.topright
+            },
+            "bottom": {
+                "offset": pygame.Vector2(0, -1),
+                "start": screen_rect.bottomleft,
+                "end": screen_rect.bottomright
+            }
         }
+
+        # Dessiner chaque bord demandé
         for border_name in WINDOW_BORDERS_NAME:
-            offset = WINDOW_BORDER_LINE_OFFSET * screen_borders[border_name]["offset"] // 2
+            offset_vector = pygame.Vector2(*screen_borders[border_name]["offset"])
+            offset = offset_vector * (WINDOW_BORDER_LINE_OFFSET // 2)
+
+            start = pygame.Vector2(*screen_borders[border_name]["start"])
+            end = pygame.Vector2(*screen_borders[border_name]["end"])
+
             border_line = pygame.draw.line(
                 self.__screen,
                 pygame.color.THECOLORS[WINDOW_BORDERS_COLOR[border_name]],
-                pygame.Vector2(screen_borders[border_name]["start"]) + offset,
-                pygame.Vector2(screen_borders[border_name]["end"]) + offset,
-                width = WINDOW_BORDER_LINE_OFFSET
+                start + offset,
+                end + offset,
+                width=WINDOW_BORDER_LINE_OFFSET
             )
+
             self.__screen_borders_lines[border_name] = border_line
 
-    def __draw_score(self) -> None:
-        font = pygame.font.SysFont(None, TEXT_SIZE)
-        text_render = font.render(str(self.__player.score), True, pygame.Color(pygame.color.THECOLORS["white"]))
-        self.__screen.blit(text_render,
-                           (self.__screen_rect.right - TEXT_SIZE // 4 - text_render.get_rect().width, TEXT_SIZE // 4))
+    # Détecter les collisions avec les bords
+    def __handle_borders_collisions(self) -> None:
+        for actor_pseudo_sprite in self.__balls_sprites:
+            for border_name, border_line in self.__screen_borders_lines.items():
+                if actor_pseudo_sprite.rect.colliderect(border_line):
+                    # Déléguer la réaction de collision à l'acteur
+                    actor = actor_pseudo_sprite.actor
+                    actor.on_collide_border(border_name)
+                    # Si l'acteur s'est auto-détruit, supprimer le sprite
+                    if not actor.is_alive():
+                        actor_pseudo_sprite.kill()
 
+    def __handle_balls_paddle_collisions(self) -> None:
+        collisions = pygame.sprite.groupcollide(
+            self.__balls_sprites,
+            self.__paddles_sprites,
+            False,
+            False
+        )
+
+        for ball_sprite, paddle_sprites in collisions.items():
+            ball = ball_sprite.actor
+            for paddle_sprite in paddle_sprites:
+                ball.on_collide_actor(paddle_sprite.actor, collision_axis="vertical")
+
+    def __handle_balls_bricks_collisions(self) -> None:
+        collisions = pygame.sprite.groupcollide(
+            self.__balls_sprites,
+            self.__bricks_sprites,
+            False,
+            False
+        )
+        
+        for ball_sprite, bricks_sprites in collisions.items():
+            ball = ball_sprite.actor
+
+            for brick_sprite in bricks_sprites:
+                brick = brick_sprite.actor
+                # Calculer l'axe principal de collision avec la brique
+                ball_rect = ball_sprite.rect
+                brick_rect = brick_sprite.rect
+                overlap_x = min(ball_rect.right, brick_rect.right) - max(ball_rect.left, brick_rect.left)
+                overlap_y = min(ball_rect.bottom, brick_rect.bottom) - max(ball_rect.top, brick_rect.top)
+                collision_axis = "horizontal" if overlap_x < overlap_y else "vertical"
+                ball.on_collide_actor(brick, collision_axis=collision_axis)
+
+                brick.hit()
+
+                if brick.health <= 0:
+                    brick_sprite.kill()
+
+    # Mettre à jour les acteurs
+    def __update_actors(self) -> None:
+        self.__paddles_sprites.update()
+        self.__balls_sprites.update()
+        self.__bricks_sprites.update()
+
+    # Dessiner les acteurs
     def __draw_actors(self) -> None:
-        self.__spaceship_sprite.draw(self.__screen)
-        self.__asteroids_sprites.draw(self.__screen)
+        self.__paddles_sprites.draw(self.__screen)
         self.__balls_sprites.draw(self.__screen)
-        self.__draw_score()
-
-    def __inside_game_loop(self) -> None:
-        for event in pygame.event.get():
-            self.__handle_game_events(event)
-        self.__draw_screen_borders()
-        if self.__shoot_ball:
-            self.__init_ball()
-        self.__detect_game_collisions()
-        self.__update_actors()
-        self.__draw_actors()
-
-    def __init_end(self) -> None:
-        self.__init_end_buttons()
-
-    def __init_end_buttons(self) -> None:
-        self.__end_buttons = pygame.sprite.Group()
-        Button(
-            pygame.Vector2(self.__screen_rect.width // 4, self.__screen_rect.bottom - 1.5 * TEXT_SIZE),
-            pygame.Color(pygame.color.THECOLORS["orange"]),
-            pygame.Color(pygame.color.THECOLORS["white"]),
-            " Quit ",
-            self.__end_buttons
-        )
-        self.__end_buttons.sprites()[0].center_at_width()
-        Button(
-            pygame.Vector2(3 * self.__screen_rect.width // 4, self.__screen_rect.bottom - 1.5 * TEXT_SIZE),
-            pygame.Color(pygame.color.THECOLORS["green"]),
-            pygame.Color(pygame.color.THECOLORS["white"]),
-            "Replay",
-            self.__end_buttons
-        )
-        self.__end_buttons.sprites()[1].center_at_width()
-
-    def __handle_end_events(self, event: pygame.event.Event) -> None:
-        match event.type:
-            case pygame.MOUSEBUTTONDOWN:
-                if self.__end_buttons.sprites()[0].rect.collidepoint(event.pos):
-                    self.__is_running = False
-                    pygame.quit()
-                    sys.exit()
-                elif self.__end_buttons.sprites()[1].rect.collidepoint(event.pos):
-                    self.__game_state = "level"
-                    self.__level = 0
-                    self.__init_level()
-                    self.__player.score = 0
-            case pygame.QUIT:
-                self.__is_running = False
-                pygame.quit()
-                sys.exit()
-
-    def __draw_top_5_scores(self) -> None:
-        font = pygame.font.SysFont(None, TEXT_SIZE)
-        i = 0.5
-        text_render = font.render("Top 5 scores", True, pygame.Color(pygame.color.THECOLORS["white"]))
-        self.__screen.blit(text_render, (self.__screen_rect.centerx - text_render.get_width() // 2, TEXT_SIZE * i))
-        i += 1
-        for player in self.__scores.players:
-            text_render = font.render(player.name, True, pygame.Color(pygame.color.THECOLORS["white"]))
-            self.__screen.blit(text_render, (TEXT_SIZE, TEXT_SIZE * i))
-            text_render = font.render(str(player.score), True, pygame.Color(pygame.color.THECOLORS["white"]))
-            self.__screen.blit(text_render,
-                               (self.__screen_rect.right - TEXT_SIZE - text_render.get_rect().width, TEXT_SIZE * i))
-            i += 1
-
-    def __draw_end_buttons(self) -> None:
-        self.__end_buttons.draw(self.__screen)
-        self.__draw_top_5_scores()
-
-    def __inside_end_loop(self) -> None:
-        for event in pygame.event.get():
-            self.__handle_end_events(event)
-        self.__draw_end_buttons()
+        self.__bricks_sprites.draw(self.__screen)
 
     def run(self) -> None:
         self.__is_running = True
-        self.__frame_counter = 0
-        self.__init_start()
+
         while self.__is_running:
             self.__clock.tick_busy_loop(FPS)
-            self.__frame_counter += 1
-            self.__screen.fill(GAME_COLOR)
-            match self.__game_state:
-                case "start":
-                    self.__inside_start_loop()
-                case "level":
-                    self.__inside_level_loop()
-                case "play":
-                    self.__inside_game_loop()
-                case "end":
-                    self.__inside_end_loop()
+
+            for event in pygame.event.get():
+                self.__handle_events(event)
+
+            # Effacer l'écran
+            self.__screen.fill(pygame.color.THECOLORS["black"])
+
+            # Dessiner les bords
+            self.__draw_screen_borders()
+
+            # Mettre à jour les acteurs
+            self.__update_actors()
+
+            # Vérifier les collisions avec les bords
+            self.__handle_borders_collisions()
+
+            # Dessiner les acteurs
+            self.__draw_actors()
+
+            # Vérifier les collisions entre les balles et la raquette
+            self.__handle_balls_paddle_collisions()
+
+            # Vérifier les collisions entre les balles et les briques
+            self.__handle_balls_bricks_collisions()
+
+            # Rafraîchir l'affichage
             pygame.display.flip()
-
-
+        
+# Instancier le jeu (Singleton)
 game = Game()
+# Démarrer le jeu
 game.run()
