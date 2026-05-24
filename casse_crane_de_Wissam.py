@@ -1,5 +1,6 @@
 import pygame
 import sys
+import random
 
 WINDOW_SIZE: tuple[int, int]  = (1280, 720)
 WINDOW_TITLE: str = "pygame_step_05" 
@@ -130,7 +131,10 @@ class ActorPseudoSprite(pygame.sprite.Sprite):
    
     def update(self) -> None:
         # Mettre à jour le modèle
-        prev_size = (int(self._rect.w), int(self._rect.h)) if hasattr(self, "_rect") else None
+        if hasattr(self, "_rect"):
+            prev_size = (int(self._rect.w), int(self._rect.h))
+        else:
+            prev_size = None
         self._actor.update()
 
         new_size = (int(self._actor.size.x), int(self._actor.size.y))
@@ -140,6 +144,71 @@ class ActorPseudoSprite(pygame.sprite.Sprite):
             self._init_rect()
         # Mettre à jour la position du rect
         self._rect.topleft = (int(self._actor.position.x), int(self._actor.position.y))
+
+class Button(pygame.sprite.Sprite):
+    __position: pygame.Vector2
+    __size: pygame.Vector2
+    __color: pygame.Color
+    __hover_color: pygame.Color
+    __text_color: pygame.Color
+    __text: str
+    __hovered: bool
+
+    def __init__(self, position: pygame.Vector2, text_color: pygame.Color, color: pygame.Color, hover_color: pygame.Color, text: str, *groups: pygame.sprite.Group, size: pygame.Vector2 = None) -> None:
+        super().__init__(*groups)
+        self.__position = position
+        if size is None:
+            self.__size = pygame.Vector2(len(text) * 18, 50)
+        else:
+            self.__size = size
+        self.__color = color
+        self.__hover_color = hover_color
+        self.__text_color = text_color
+        self.__text = text
+        self.__hovered = False
+        self.__init_button()
+
+    def __init_button(self) -> None:
+        self.image = pygame.Surface(self.__size, pygame.SRCALPHA)
+        self.rect = self.image.get_rect()
+        self.__draw_button()
+        self.update()
+
+    def __draw_button(self) -> None:
+        if self.__hovered:
+            background = self.__hover_color
+        else:
+            background = self.__color
+        self.image.fill(pygame.Color(0, 0, 0, 0))
+        pygame.draw.rect(self.image, background, ((0, 0), self.__size), border_radius=8)
+        pygame.draw.rect(self.image, pygame.Color("white"), ((0, 0), self.__size), width=2, border_radius=8)
+        font = pygame.font.SysFont(None, 30)
+        text_render = font.render(self.__text, True, self.__text_color)
+        self.image.blit(text_render, ((self.__size.x - text_render.get_rect().width) // 2, (self.__size.y - text_render.get_rect().height) // 2))
+
+    def center_at_width(self) -> None:
+        self.__position.x = WINDOW_SIZE[0] / 2 - self.__size.x / 2
+        self.update()
+
+    def center_at_height(self) -> None:
+        self.__position.y = WINDOW_SIZE[1] / 2 - self.__size.y / 2
+        self.update()
+
+    def set_position(self, position: pygame.Vector2) -> None:
+        self.__position = position
+        self.update()
+
+    @property
+    def text(self) -> str:
+        return self.__text
+
+    def set_hovered(self, hovered: bool) -> None:
+        if self.__hovered != hovered:
+            self.__hovered = hovered
+            self.__draw_button()
+
+    def update(self) -> None:
+        self.rect.update(int(self.__position.x), int(self.__position.y), int(self.__size.x), int(self.__size.y))
 
 class Ball(Actor):
     def bounce_x(self) -> None:
@@ -250,7 +319,44 @@ class Brick(Actor):
         self.__health -= 1
 
 class BrickSprite(ActorPseudoSprite):
-    pass
+    def _get_color_by_health(self) -> pygame.Color:
+        #Calcule la couleur en fonction des HP de la brique.
+        brick = self._actor
+        current_health = brick.health
+        
+        if current_health <= 0:
+            return pygame.Color(0, 0, 0)
+        elif current_health == 3:
+            return pygame.Color("red")
+        elif current_health == 2:
+            return pygame.Color("#990000")
+        else:
+            return pygame.Color("#330000")
+    
+    def _init_image(self) -> None:
+        size = (int(self._actor.size.x), int(self._actor.size.y))
+        self._image = pygame.Surface(size, pygame.SRCALPHA)
+        color = self._get_color_by_health()
+        pygame.draw.rect(self._image, color, ((0, 0), size))
+    
+    def update(self) -> None:
+        if hasattr(self, "_rect"):
+            prev_size = (int(self._rect.w), int(self._rect.h))
+        else:
+            prev_size = None
+
+        self._actor.update()
+        new_size = (int(self._actor.size.x), int(self._actor.size.y))
+        if prev_size is None or new_size != prev_size:
+            self._init_image()
+            self._init_rect()
+        else:
+            self._init_image()
+        self._rect.topleft = (int(self._actor.position.x), int(self._actor.position.y))
+
+MAIN_MENU: str = "main_menu"
+PLAYING: str = "playing"
+GAME_OVER: str = "game_over"
 
 class Game:
     __screen: pygame.Surface
@@ -260,51 +366,42 @@ class Game:
     __paddles_sprites: pygame.sprite.GroupSingle #une seule raquette 
     __balls_sprites: pygame.sprite.Group
     __bricks_sprites: pygame.sprite.Group
+    __game_state: str
+    __menu_buttons: pygame.sprite.Group
 
     def __init__(self) -> None:
         pygame.init()
         self.__clock = pygame.time.Clock()
         self.__is_running = False
+        self.__game_state = MAIN_MENU
         self.__init_screen()
-        self.__init_actors()
+        self.__reset_actors()
+        self.__init_menu_buttons()
+        self.__init_game_over_buttons()
 
     def __init_screen(self) -> None:
         self.__screen = pygame.display.set_mode(WINDOW_SIZE)
         pygame.display.set_caption(WINDOW_TITLE)
 
-    # Initialiser les acteurs du jeu
-    def __init_actors(self) -> None:
+    def __reset_actors(self) -> None:
         self.__paddles_sprites = pygame.sprite.GroupSingle()
         self.__balls_sprites = pygame.sprite.Group()
         self.__bricks_sprites = pygame.sprite.Group()
 
-        # Création de la raquette
-        actor = Paddle(
-            pygame.Vector2(590, 700),  # position de la raquette
-            pygame.Vector2(100, 10),   # taille de la raquette
-            pygame.Vector2(0, 0)       # vitesse nulle pour l'instant
+        paddle = Paddle(
+            pygame.Vector2(590, 700),
+            pygame.Vector2(100, 10),
+            pygame.Vector2(0, 0)
         )
+        ActorPseudoSprite(paddle, pygame.Color("white"), self.__paddles_sprites)
 
-        # Création de l'affichage de la raquette
-        ActorPseudoSprite(
-            actor,
-            pygame.Color("white"),
-            self.__paddles_sprites
-            )
-
-        # Création de la balle
         ball = Ball(
-            pygame.Vector2(640, 680),
+            pygame.Vector2(random.randint(100, 1180), 680),
             pygame.Vector2(10, 10),
-            pygame.Vector2(10, -10)
+            pygame.Vector2(random.randint(-15,15), -10)
         )
-        # Affichage de la balle
-        BallSprite(
-            ball,
-            pygame.Color("green"),
-            self.__balls_sprites
-            )
-        
+        BallSprite(ball, pygame.Color("green"), self.__balls_sprites)
+
         for row in range(3):
             for col in range(14):
                 brick = Brick(
@@ -313,14 +410,131 @@ class Game:
                     pygame.Vector2(0, 0),
                     3
                 )
+                BrickSprite(brick, pygame.Color("red"), self.__bricks_sprites)
 
-                BrickSprite(
-                    brick,
-                    pygame.Color("red"),
-                    self.__bricks_sprites
-                )
+    def __start_new_game(self) -> None:
+        self.__reset_actors()
+        self.__game_state = PLAYING
 
-    def __handle_events(self, event: pygame.event.Event) -> None:
+    def __return_to_menu(self) -> None:
+        self.__game_state = MAIN_MENU
+
+    def __init_menu_buttons(self) -> None:
+        self.__menu_buttons = pygame.sprite.Group()
+        Button(
+            pygame.Vector2(WINDOW_SIZE[0] / 2, 360),
+            pygame.Color("white"),
+            pygame.Color("#333333"),
+            pygame.Color("#555555"),
+            "Jouer",
+            self.__menu_buttons,
+            size=pygame.Vector2(200, 80)
+        )
+        Button(
+            pygame.Vector2(WINDOW_SIZE[0] / 2, 480),
+            pygame.Color("white"),
+            pygame.Color("#333333"),
+            pygame.Color("#555555"),
+            "Quitter (Q)",
+            self.__menu_buttons,
+            size=pygame.Vector2(150, 50)
+        )
+        for button in self.__menu_buttons.sprites():
+            button.center_at_width()
+
+    def __init_game_over_buttons(self) -> None:
+        self.__game_over_buttons = pygame.sprite.Group()
+        Button(
+            pygame.Vector2(WINDOW_SIZE[0] / 2, 360),
+            pygame.Color("white"),
+            pygame.Color("#333333"),
+            pygame.Color("#555555"),
+            "Recommencer (R)",
+            self.__game_over_buttons
+        )
+        Button(
+            pygame.Vector2(WINDOW_SIZE[0] / 2, 440),
+            pygame.Color("white"),
+            pygame.Color("#333333"),
+            pygame.Color("#555555"),
+            "Menu (M)",
+            self.__game_over_buttons
+        )
+        Button(
+            pygame.Vector2(WINDOW_SIZE[0] / 2, 520),
+            pygame.Color("white"),
+            pygame.Color("#333333"),
+            pygame.Color("#555555"),
+            "Quitter (Q)",
+            self.__game_over_buttons,
+            size=pygame.Vector2(120, 50)
+        )
+        for button in self.__game_over_buttons.sprites():
+            button.center_at_width()
+
+    def __game_over(self) -> None:
+        self.__game_state = GAME_OVER
+
+    def __draw_text(
+        self,
+        text: str,
+        size: int,
+        color: pygame.Color,
+        position: tuple[int, int],
+        center: bool = False
+    ) -> None:
+        font = pygame.font.SysFont(None, size)
+        rendered = font.render(text, True, color)
+        rect = rendered.get_rect()
+        if center:
+            rect.center = position
+        else:
+            rect.topleft = position
+        self.__screen.blit(rendered, rect)
+
+    def __draw_menu(self) -> None:
+        self.__screen.fill(pygame.color.THECOLORS["black"])
+        self.__draw_text("Casse Briques De Bea et Wiss", 72, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 160), center=True)
+        self.__draw_text("Cliquez sur un bouton ou appuyez sur ESPACE pour jouer", 30, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 240), center=True)
+        self.__draw_text("Gauche / Droite ou utilisez la souris pour déplacer la raquette", 30, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 300), center=True)
+        self.__menu_buttons.draw(self.__screen)
+
+    def __draw_game_over(self) -> None:
+        self.__screen.fill(pygame.color.THECOLORS["black"])
+        self.__draw_text("ÉCHEC !", 72, pygame.Color("red"), (WINDOW_SIZE[0] // 2, 180), center=True)
+        self.__draw_text("La balle est tombée.", 36, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 260), center=True)
+        self.__draw_text("Utilisez les boutons ci-dessous", 28, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 320), center=True)
+        self.__game_over_buttons.draw(self.__screen)
+
+    def __handle_menu_event(self, event: pygame.event.Event) -> None:
+        match event.type:
+            case pygame.QUIT:
+                self.__is_running = False
+                pygame.quit()
+                sys.exit()
+            case pygame.MOUSEMOTION:
+                for button in self.__menu_buttons.sprites():
+                    button.set_hovered(button.rect.collidepoint(event.pos))
+            case pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    for button in self.__menu_buttons.sprites():
+                        if button.rect.collidepoint(event.pos):
+                            if button.text == "Jouer":
+                                self.__start_new_game()
+                            elif button.text == "Quitter (Q)":
+                                self.__is_running = False
+                                pygame.quit()
+                                sys.exit()
+            case pygame.KEYDOWN:
+                match event.key:
+                    case pygame.K_SPACE:
+                        self.__start_new_game()
+                    case pygame.K_q | pygame.K_ESCAPE:
+                        self.__is_running = False
+                        pygame.quit()
+                        sys.exit()
+
+    def __handle_playing_event(self, event: pygame.event.Event) -> None:
         match event.type:
             case pygame.QUIT:
                 self.__is_running = False
@@ -330,7 +544,7 @@ class Game:
                 if self.__paddles_sprites.sprite is not None:
                     if pygame.mouse.get_focused():
                         self.__paddles_sprites.sprite.actor.position = pygame.Vector2(pygame.mouse.get_pos())
-            case pygame.KEYDOWN: # IL FAUT REGLER LE PROBLEME DES FLECHES LORS DU TRANSFER KEYUP KEYDOWN
+            case pygame.KEYDOWN:
                 match event.key:
                     case pygame.K_LEFT:
                         if self.__paddles_sprites.sprite is not None:
@@ -338,21 +552,50 @@ class Game:
                     case pygame.K_RIGHT:
                         if self.__paddles_sprites.sprite is not None:
                             self.__paddles_sprites.sprite.actor.speed = PADDLE["speed"].copy()
+                    case pygame.K_ESCAPE:
+                        self.__return_to_menu()
             case pygame.KEYUP:
                 match event.key:
                     case pygame.K_LEFT | pygame.K_RIGHT:
                         if self.__paddles_sprites.sprite is not None:
                             self.__paddles_sprites.sprite.actor.speed = NULL_PYGAME_VECTOR2.copy()
 
+    def __handle_game_over_event(self, event: pygame.event.Event) -> None:
+        match event.type:
+            case pygame.QUIT:
+                self.__is_running = False
+                pygame.quit()
+                sys.exit()
+            case pygame.MOUSEMOTION:
+                for button in self.__game_over_buttons.sprites():
+                    button.set_hovered(button.rect.collidepoint(event.pos))
+            case pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    for button in self.__game_over_buttons.sprites():
+                        if button.rect.collidepoint(event.pos):
+                            if button.text == "Recommencer (R)":
+                                self.__start_new_game()
+                            elif button.text == "Menu (M)":
+                                self.__return_to_menu()
+                            elif button.text == "Quitter (Q)":
+                                self.__is_running = False
+                                pygame.quit()
+                                sys.exit()
+            case pygame.KEYDOWN:
+                match event.key:
+                    case pygame.K_r:
+                        self.__start_new_game()
+                    case pygame.K_m:
+                        self.__return_to_menu()
+                    case pygame.K_q | pygame.K_ESCAPE:
+                        self.__is_running = False
+                        pygame.quit()
+                        sys.exit()
+
     # Créer les bords de l'écran
     def __draw_screen_borders(self) -> None:
-        # Initialiser le dictionnaire des lignes des bords
         self.__screen_borders_lines = {}
-
-        # Récupérer le rectangle de l'écran
         screen_rect = self.__screen.get_rect()
-
-        # Définir les caractéristiques des bords
         screen_borders = {
             "left": {
                 "offset": pygame.Vector2(+1, 0),
@@ -380,10 +623,8 @@ class Game:
         for border_name in WINDOW_BORDERS_NAME:
             offset_vector = pygame.Vector2(*screen_borders[border_name]["offset"])
             offset = offset_vector * (WINDOW_BORDER_LINE_OFFSET // 2)
-
             start = pygame.Vector2(*screen_borders[border_name]["start"])
             end = pygame.Vector2(*screen_borders[border_name]["end"])
-
             border_line = pygame.draw.line(
                 self.__screen,
                 pygame.color.THECOLORS[WINDOW_BORDERS_COLOR[border_name]],
@@ -391,7 +632,6 @@ class Game:
                 end + offset,
                 width=WINDOW_BORDER_LINE_OFFSET
             )
-
             self.__screen_borders_lines[border_name] = border_line
 
     # Détecter les collisions avec les bords
@@ -399,10 +639,8 @@ class Game:
         for actor_pseudo_sprite in self.__balls_sprites:
             for border_name, border_line in self.__screen_borders_lines.items():
                 if actor_pseudo_sprite.rect.colliderect(border_line):
-                    # Déléguer la réaction de collision à l'acteur
                     actor = actor_pseudo_sprite.actor
                     actor.on_collide_border(border_name)
-                    # Si l'acteur s'est auto-détruit, supprimer le sprite
                     if not actor.is_alive():
                         actor_pseudo_sprite.kill()
 
@@ -413,7 +651,6 @@ class Game:
             False,
             False
         )
-
         for ball_sprite, paddle_sprites in collisions.items():
             ball = ball_sprite.actor
             for paddle_sprite in paddle_sprites:
@@ -426,70 +663,67 @@ class Game:
             False,
             False
         )
-        
         for ball_sprite, bricks_sprites in collisions.items():
             ball = ball_sprite.actor
-
             for brick_sprite in bricks_sprites:
                 brick = brick_sprite.actor
-                # Calculer l'axe principal de collision avec la brique
                 ball_rect = ball_sprite.rect
                 brick_rect = brick_sprite.rect
                 overlap_x = min(ball_rect.right, brick_rect.right) - max(ball_rect.left, brick_rect.left)
                 overlap_y = min(ball_rect.bottom, brick_rect.bottom) - max(ball_rect.top, brick_rect.top)
-                collision_axis = "horizontal" if overlap_x < overlap_y else "vertical"
+                if overlap_x < overlap_y:
+                    collision_axis = "horizontal"
+                else:
+                    collision_axis = "vertical"
                 ball.on_collide_actor(brick, collision_axis=collision_axis)
-
                 brick.hit()
-
                 if brick.health <= 0:
                     brick_sprite.kill()
 
-    # Mettre à jour les acteurs
     def __update_actors(self) -> None:
         self.__paddles_sprites.update()
         self.__balls_sprites.update()
         self.__bricks_sprites.update()
 
-    # Dessiner les acteurs
     def __draw_actors(self) -> None:
         self.__paddles_sprites.draw(self.__screen)
         self.__balls_sprites.draw(self.__screen)
         self.__bricks_sprites.draw(self.__screen)
+
+    def __check_game_over(self) -> None:
+        if len(self.__balls_sprites) == 0:
+            self.__game_over()
 
     def run(self) -> None:
         self.__is_running = True
 
         while self.__is_running:
             self.__clock.tick_busy_loop(FPS)
-
             for event in pygame.event.get():
-                self.__handle_events(event)
+                if self.__game_state == MAIN_MENU:
+                    self.__handle_menu_event(event)
+                elif self.__game_state == PLAYING:
+                    self.__handle_playing_event(event)
+                elif self.__game_state == GAME_OVER:
+                    self.__handle_game_over_event(event)
 
-            # Effacer l'écran
-            self.__screen.fill(pygame.color.THECOLORS["black"])
-
-            # Dessiner les bords
-            self.__draw_screen_borders()
-
-            # Mettre à jour les acteurs
-            self.__update_actors()
-
-            # Vérifier les collisions avec les bords
-            self.__handle_borders_collisions()
-
-            # Dessiner les acteurs
-            self.__draw_actors()
-
-            # Vérifier les collisions entre les balles et la raquette
-            self.__handle_balls_paddle_collisions()
-
-            # Vérifier les collisions entre les balles et les briques
-            self.__handle_balls_bricks_collisions()
+            if self.__game_state == MAIN_MENU:
+                self.__draw_menu()
+            elif self.__game_state == PLAYING:
+                self.__screen.fill(pygame.color.THECOLORS["black"])
+                self.__draw_screen_borders()
+                self.__update_actors()
+                self.__handle_borders_collisions()
+                self.__handle_balls_paddle_collisions()
+                self.__handle_balls_bricks_collisions()
+                self.__draw_actors()
+                self.__check_game_over()
+            elif self.__game_state == GAME_OVER:
+                self.__draw_game_over()
 
             # Rafraîchir l'affichage
             pygame.display.flip()
-        
+
 # Instancier le jeu (Singleton)
 game = Game()
 # Démarrer le jeu
