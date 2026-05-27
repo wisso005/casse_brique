@@ -218,35 +218,65 @@ class Ball(Actor):
         self.speed.y = -self.speed.y
     
     def on_collide_border(self, border_name: str) -> None:
-        if border_name in ("left", "right"):
-            self.bounce_x()
+        if border_name == "left":
+            self.speed.x = abs(self.speed.x)
+            self.position.x = WINDOW_BORDER_LINE_OFFSET
+        elif border_name == "right":
+            self.speed.x = -abs(self.speed.x)
+            self.position.x = WINDOW_SIZE[0] - self.size.x - WINDOW_BORDER_LINE_OFFSET
         elif border_name == "top":
-            self.bounce_y()
+            self.speed.y = abs(self.speed.y)
+            self.position.y = WINDOW_BORDER_LINE_OFFSET
         elif border_name == "bottom":
             # La balle est perdue
             self.destroy()
 
     def on_collide_actor(self, other: "Actor", collision_axis: str | None = None) -> None:
-        # Si c'est une raquette, rebondir avec angle selon position de contact
         if isinstance(other, Paddle):
-            paddle_left = other.position.x
-            paddle_right = other.position.x + other.size.x
-            paddle_center_x = (paddle_left + paddle_right) / 2
-            ball_center_x = self.position.x + self.size.x / 2
-            paddle_width = other.size.x / 2
-            position_ratio = (ball_center_x - paddle_center_x) / paddle_width
-            position_ratio = max(-1, min(1, position_ratio))
-
+            rel_x, rel_y = pygame.mouse.get_rel()
             self.bounce_y()
-            max_horizontal_speed = abs(self.speed.y)
-            self.speed.x = position_ratio * max_horizontal_speed
+            if rel_x != 0:
+                self.speed.x = max(-10, min(10, rel_x))
         else:
             if collision_axis == "horizontal":
                 self.bounce_x()
             else:
                 self.bounce_y()
 
+class BallSprite(ActorPseudoSprite):
+
+    def __init__(
+            self,
+            actor: Actor,
+            color: pygame.Color,
+            *groups: pygame.sprite.Group 
+    ) -> None:
+        super().__init__(actor, color, *groups)
+
+    def _init_image(self) -> None:
+        size = (int(self._actor.size.x), int(self._actor.size.y))
+        self._image = pygame.Surface(size, pygame.SRCALPHA)
+
+        center = (size[0] // 2, size[1] // 2)
+        radius = min(size[0], size[1]) // 2
+
+        pygame.draw.circle(
+            self._image,
+            pygame.Color("green"),
+            center,
+            radius
+        )
+
 class Paddle(Actor):
+    def __init__(self, position: pygame.Vector2, size: pygame.Vector2, speed: pygame.Vector2) -> None:
+        super().__init__(position, size, speed)
+        self._previous_position = pygame.Vector2(position)
+        self._actual_velocity = pygame.Vector2(0, 0)
+
+    @property
+    def actual_velocity(self) -> pygame.Vector2:
+        return self._actual_velocity
+
     @property
     def position(self) -> pygame.Vector2:
         return self._position
@@ -273,29 +303,8 @@ class Paddle(Actor):
         elif self._position.x > max_x:
             self._position.x = max_x
 
-class BallSprite(ActorPseudoSprite):
-
-    def __init__(
-            self,
-            actor: Actor,
-            color: pygame.Color,
-            *groups: pygame.sprite.Group 
-    ) -> None:
-        super().__init__(actor, color, *groups)
-
-    def _init_image(self) -> None:
-        size = (int(self._actor.size.x), int(self._actor.size.y))
-        self._image = pygame.Surface(size, pygame.SRCALPHA)
-
-        center = (size[0] // 2, size[1] // 2)
-        radius = min(size[0], size[1]) // 2
-
-        pygame.draw.circle(
-            self._image,
-            pygame.Color("green"),
-            center,
-            radius
-        )
+        self._actual_velocity = self._position - self._previous_position
+        self._previous_position = pygame.Vector2(self._position)
 
 class Brick(Actor):
 
@@ -354,6 +363,27 @@ class BrickSprite(ActorPseudoSprite):
             self._init_image()
         self._rect.topleft = (int(self._actor.position.x), int(self._actor.position.y))
 
+class PowerUp(Actor):
+    def __init__(self, position: pygame.Vector2) -> None:
+        # Taille de 15x15, et vitesse vers le bas (y = 3)
+        super().__init__(position, pygame.Vector2(10, 10), pygame.Vector2(0, 3))
+
+    def on_collide_border(self, border_name: str) -> None:
+        if border_name == "bottom":
+            self.destroy()
+
+class PowerUpSprite(ActorPseudoSprite):
+    def _init_image(self) -> None:
+        size = (int(self._actor.size.x), int(self._actor.size.y))
+        self._image = pygame.Surface(size, pygame.SRCALPHA)
+        # On dessine un cercle jaune pour différencier le powerup des briques
+        pygame.draw.circle(
+            self._image, 
+            pygame.Color("yellow"), 
+            (size[0] // 2, size[1] // 2), 
+            min(size[0], size[1]) // 2
+        )
+
 MAIN_MENU: str = "main_menu"
 PLAYING: str = "playing"
 GAME_OVER: str = "game_over"
@@ -368,12 +398,14 @@ class Game:
     __bricks_sprites: pygame.sprite.Group
     __game_state: str
     __menu_buttons: pygame.sprite.Group
+    __powerups_sprites: pygame.sprite.Group
 
     def __init__(self) -> None:
         pygame.init()
         self.__clock = pygame.time.Clock()
         self.__is_running = False
         self.__game_state = MAIN_MENU
+        self.__active_powerups: dict[str, int] = {}
         self.__init_screen()
         self.__reset_actors()
         self.__init_menu_buttons()
@@ -387,6 +419,7 @@ class Game:
         self.__paddles_sprites = pygame.sprite.GroupSingle()
         self.__balls_sprites = pygame.sprite.Group()
         self.__bricks_sprites = pygame.sprite.Group()
+        self.__powerups_sprites = pygame.sprite.Group()
 
         paddle = Paddle(
             pygame.Vector2(590, 700),
@@ -636,13 +669,21 @@ class Game:
 
     # Détecter les collisions avec les bords
     def __handle_borders_collisions(self) -> None:
-        for actor_pseudo_sprite in self.__balls_sprites:
-            for border_name, border_line in self.__screen_borders_lines.items():
-                if actor_pseudo_sprite.rect.colliderect(border_line):
-                    actor = actor_pseudo_sprite.actor
-                    actor.on_collide_border(border_name)
-                    if not actor.is_alive():
-                        actor_pseudo_sprite.kill()
+        for actor_pseudo_sprite in list(self.__balls_sprites) + list(self.__powerups_sprites):
+            actor = actor_pseudo_sprite.actor
+            
+            if actor.position.x <= WINDOW_BORDER_LINE_OFFSET:
+                actor.on_collide_border("left")
+            if actor.position.x + actor.size.x >= WINDOW_SIZE[0] - WINDOW_BORDER_LINE_OFFSET:
+                actor.on_collide_border("right")
+                
+            if actor.position.y <= WINDOW_BORDER_LINE_OFFSET:
+                actor.on_collide_border("top")
+            if actor.position.y + actor.size.y >= WINDOW_SIZE[1]:
+                actor.on_collide_border("bottom")
+                
+            if not actor.is_alive():
+                actor_pseudo_sprite.kill()
 
     def __handle_balls_paddle_collisions(self) -> None:
         collisions = pygame.sprite.groupcollide(
@@ -663,6 +704,9 @@ class Game:
             False,
             False
         )
+        
+        is_piercing = "piercing_ball" in self.__active_powerups # Vrai ou Faux
+
         for ball_sprite, bricks_sprites in collisions.items():
             ball = ball_sprite.actor
             for brick_sprite in bricks_sprites:
@@ -671,24 +715,143 @@ class Game:
                 brick_rect = brick_sprite.rect
                 overlap_x = min(ball_rect.right, brick_rect.right) - max(ball_rect.left, brick_rect.left)
                 overlap_y = min(ball_rect.bottom, brick_rect.bottom) - max(ball_rect.top, brick_rect.top)
+                
                 if overlap_x < overlap_y:
                     collision_axis = "horizontal"
                 else:
                     collision_axis = "vertical"
-                ball.on_collide_actor(brick, collision_axis=collision_axis)
+                
+                # REBOND UNIQUEMENT SI NON-TRANSPERÇANT
+                if not is_piercing:
+                    ball.on_collide_actor(brick, collision_axis=collision_axis)
+                
                 brick.hit()
                 if brick.health <= 0:
                     brick_sprite.kill()
+                    # 50% de chance de loot un power-up (comme fait à l'étape précédente)
+                    if random.random() < 0.50: 
+                        pu_pos = pygame.Vector2(
+                            brick.position.x + (brick.size.x / 2) - 7.5, 
+                            brick.position.y
+                        )
+                        pu = PowerUp(pu_pos)
+                        PowerUpSprite(pu, pygame.Color("yellow"), self.__powerups_sprites)
+    def __apply_random_powerup(self) -> None:
+        if self.__paddles_sprites.sprite is None:
+            return
+        
+        paddle = self.__paddles_sprites.sprite.actor
+        balls = [sprite.actor for sprite in self.__balls_sprites.sprites()]
+        if not balls: return
+
+        effect = random.randint(1, 7)
+        current_time = pygame.time.get_ticks()
+
+        match effect:
+            case 1:
+                # 1. Agrandir la raquette (10s)
+                paddle.set_size(pygame.Vector2(200, 10))
+                self.__active_powerups["enlarge_paddle"] = current_time + 10000
+                self.__active_powerups.pop("shrink_paddle", None) # Annule l'effet inverse
+            
+            case 2:
+                # 2. Rapetissir la raquette (10s)
+                paddle.set_size(pygame.Vector2(50, 10))
+                self.__active_powerups["shrink_paddle"] = current_time + 10000
+                self.__active_powerups.pop("enlarge_paddle", None)
+            
+            case 3:
+                # 3. Balle ralentie (5s)
+                for b in balls:
+                    b.speed.y = 5 if b.speed.y > 0 else -5
+                self.__active_powerups["slow_ball"] = current_time + 5000
+                self.__active_powerups.pop("fast_ball", None)
+            
+            case 4:
+                # 4. Balle accélérée (5s)
+                for b in balls:
+                    b.speed.y = 15 if b.speed.y > 0 else -15
+                self.__active_powerups["fast_ball"] = current_time + 5000
+                self.__active_powerups.pop("slow_ball", None)
+            
+            case 5:
+                # 5. Balles supplémentaires (+10 balles)
+                is_slow = "slow_ball" in self.__active_powerups
+                is_fast = "fast_ball" in self.__active_powerups
+                
+                for _ in range(10):
+                    new_ball = Ball(
+                        pygame.Vector2(random.randint(100, 1180), 680),
+                        pygame.Vector2(10, 10),
+                        pygame.Vector2(random.randint(-15, 15), -10)
+                    )
+                    # Appliquer la vitesse en cours si un power-up de vitesse est actif
+                    if is_slow: new_ball.speed.y = -5
+                    elif is_fast: new_ball.speed.y = -15
+                    
+                    BallSprite(new_ball, pygame.Color("green"), self.__balls_sprites)
+            
+            case 6:
+                # 6. Balle invisible (2s)
+                self.__active_powerups["invisible_ball"] = current_time + 2000
+            
+            case 7:
+                # 7. Balle transperçante (10s)
+                self.__active_powerups["piercing_ball"] = current_time + 10000
+    def __handle_powerups_paddle_collisions(self) -> None:
+        collisions = pygame.sprite.groupcollide(
+            self.__powerups_sprites,
+            self.__paddles_sprites,
+            True,  # True = détruit le powerup
+            False  # False = ne détruit pas la raquette
+        )
+        for powerup in collisions:
+            self.__apply_random_powerup()
+    
+    def __update_powerups_timers(self) -> None:
+        current_time = pygame.time.get_ticks()
+        expired_effects = []
+
+        # Identifier les effets expirés
+        for effect, end_time in self.__active_powerups.items():
+            if current_time >= end_time:
+                expired_effects.append(effect)
+
+        # Nettoyer et réinitialiser
+        for effect in expired_effects:
+            del self.__active_powerups[effect]
+
+            if effect in ("enlarge_paddle", "shrink_paddle"):
+                if self.__paddles_sprites.sprite is not None:
+                    # Taille par défaut de la raquette
+                    self.__paddles_sprites.sprite.actor.set_size(pygame.Vector2(100, 10))
+            
+            elif effect in ("slow_ball", "fast_ball"):
+                # Vitesse y par défaut de la balle (10)
+                for sprite in self.__balls_sprites.sprites():
+                    b = sprite.actor
+                    b.speed.y = 10 if b.speed.y > 0 else -10
 
     def __update_actors(self) -> None:
         self.__paddles_sprites.update()
         self.__balls_sprites.update()
         self.__bricks_sprites.update()
+        self.__powerups_sprites.update()
 
     def __draw_actors(self) -> None:
         self.__paddles_sprites.draw(self.__screen)
-        self.__balls_sprites.draw(self.__screen)
         self.__bricks_sprites.draw(self.__screen)
+        self.__powerups_sprites.draw(self.__screen)
+        
+        # Gestion du clignotement des balles
+        if "invisible_ball" in self.__active_powerups:
+            current_time = pygame.time.get_ticks()
+            # Fait clignoter la balle toutes les 150 millisecondes
+            if (current_time // 150) % 2 == 0:
+                self.__balls_sprites.draw(self.__screen)
+        else:
+            # Affichage normal
+            self.__balls_sprites.draw(self.__screen)
 
     def __check_game_over(self) -> None:
         if len(self.__balls_sprites) == 0:
@@ -713,9 +876,11 @@ class Game:
                 self.__screen.fill(pygame.color.THECOLORS["black"])
                 self.__draw_screen_borders()
                 self.__update_actors()
+                self.__update_powerups_timers()
                 self.__handle_borders_collisions()
                 self.__handle_balls_paddle_collisions()
                 self.__handle_balls_bricks_collisions()
+                self.__handle_powerups_paddle_collisions()
                 self.__draw_actors()
                 self.__check_game_over()
             elif self.__game_state == GAME_OVER:
