@@ -387,6 +387,8 @@ class PowerUpSprite(ActorPseudoSprite):
 MAIN_MENU: str = "main_menu"
 PLAYING: str = "playing"
 GAME_OVER: str = "game_over"
+VICTORY: str = "victory"
+LEVEL_COMPLETE: str = "level_complete"
 
 class Game:
     __screen: pygame.Surface
@@ -406,10 +408,16 @@ class Game:
         self.__is_running = False
         self.__game_state = MAIN_MENU
         self.__active_powerups: dict[str, int] = {}
+        self.__current_level = 1
+        self.__max_level = 3
+        self.__score = 0
+        self.__player_name = ""
+        self.__level_complete_buttons = pygame.sprite.Group()
         self.__init_screen()
         self.__reset_actors()
         self.__init_menu_buttons()
         self.__init_game_over_buttons()
+        self.__init_level_complete_buttons()
 
     def __init_screen(self) -> None:
         self.__screen = pygame.display.set_mode(WINDOW_SIZE)
@@ -431,21 +439,41 @@ class Game:
         ball = Ball(
             pygame.Vector2(random.randint(100, 1180), 680),
             pygame.Vector2(10, 10),
-            pygame.Vector2(random.randint(-15,15), -10)
+            pygame.Vector2(random.randint(-15, 15), -10)
         )
+
         BallSprite(ball, pygame.Color("green"), self.__balls_sprites)
 
-        for row in range(3):
+        if self.__current_level == 1:   # niveau 1 : 3 lignes, 3 points de vies par brique 
+            rows = 3
+            health = 3
+
+        elif self.__current_level == 2: # niveau 2 : 5 lignes, 3 points de vies par brique 
+            rows = 5
+            health = 3
+
+        else:                           # niveau 3 : 5 lignes, 4 points de vies par brique
+            rows = 5
+            health = 4
+
+        for row in range(rows):
             for col in range(14):
                 brick = Brick(
                     pygame.Vector2(45 + col * 85, 100 + row * 20),
                     pygame.Vector2(80, 15),
                     pygame.Vector2(0, 0),
-                    3
+                    health
                 )
                 BrickSprite(brick, pygame.Color("red"), self.__bricks_sprites)
 
     def __start_new_game(self) -> None:
+        self.__current_level = 1
+        self.__score = 0
+        self.__reset_actors()
+        self.__game_state = PLAYING
+
+    def __start_next_level(self) -> None:   # passe du niveau 1 à 2, 2 à 3 et 3 à la victoire
+        self.__current_level += 1
         self.__reset_actors()
         self.__game_state = PLAYING
 
@@ -455,7 +483,7 @@ class Game:
     def __init_menu_buttons(self) -> None:
         self.__menu_buttons = pygame.sprite.Group()
         Button(
-            pygame.Vector2(WINDOW_SIZE[0] / 2, 360),
+            pygame.Vector2(WINDOW_SIZE[0] / 2, 400),
             pygame.Color("white"),
             pygame.Color("#333333"),
             pygame.Color("#555555"),
@@ -464,7 +492,7 @@ class Game:
             size=pygame.Vector2(200, 80)
         )
         Button(
-            pygame.Vector2(WINDOW_SIZE[0] / 2, 480),
+            pygame.Vector2(WINDOW_SIZE[0] / 2, 520),
             pygame.Color("white"),
             pygame.Color("#333333"),
             pygame.Color("#555555"),
@@ -504,9 +532,33 @@ class Game:
         )
         for button in self.__game_over_buttons.sprites():
             button.center_at_width()
+    
+    def __init_level_complete_buttons(self) -> None:
+        self.__level_complete_buttons = pygame.sprite.Group()
+
+        Button(
+            pygame.Vector2(WINDOW_SIZE[0] / 2, 500),
+            pygame.Color("white"),
+            pygame.Color("#333333"),
+            pygame.Color("#555555"),
+            "Niveau suivant",
+            self.__level_complete_buttons,
+            size=pygame.Vector2(250, 70)
+        )
+
+        for button in self.__level_complete_buttons.sprites():
+            button.center_at_width()
 
     def __game_over(self) -> None:
+        self.__save_score()
         self.__game_state = GAME_OVER
+
+    def __victory(self) -> None:
+        if self.__current_level >= self.__max_level:
+            self.__save_score()
+            self.__game_state = VICTORY
+        else:
+            self.__game_state = LEVEL_COMPLETE
 
     def __draw_text(
         self,
@@ -525,20 +577,114 @@ class Game:
             rect.topleft = position
         self.__screen.blit(rendered, rect)
 
-    def __draw_menu(self) -> None:
+    def __draw_menu(self) -> None:  # dessine l'écran d'accueil
         self.__screen.fill(pygame.color.THECOLORS["black"])
-        self.__draw_text("Casse Briques De Bea et Wiss", 72, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 160), center=True)
+        self.__draw_text("Casse Briques de Beatriz et Wissam", 72, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 160), center=True)
         self.__draw_text("Cliquez sur un bouton ou appuyez sur ESPACE pour jouer", 30, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 240), center=True)
         self.__draw_text("Gauche / Droite ou utilisez la souris pour déplacer la raquette", 30, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 300), center=True)
+        name_display = self.__player_name
+
+        if name_display == "":
+            name_display = "Entrez votre nom"
+
+        self.__draw_text(
+            f"Joueur : {name_display}",
+            36,
+            pygame.Color("yellow"),
+            (WINDOW_SIZE[0] // 2, 335),
+            center=True
+        )
+        
         self.__menu_buttons.draw(self.__screen)
 
-    def __draw_game_over(self) -> None:
+    def __draw_game_over(self) -> None: # dessine l'écran de défaite 
         self.__screen.fill(pygame.color.THECOLORS["black"])
         self.__draw_text("ÉCHEC !", 72, pygame.Color("red"), (WINDOW_SIZE[0] // 2, 180), center=True)
         self.__draw_text("La balle est tombée.", 36, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 260), center=True)
         self.__draw_text("Utilisez les boutons ci-dessous", 28, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 320), center=True)
         self.__game_over_buttons.draw(self.__screen)
 
+    def __draw_victory(self) -> None:   # dessine l'écran de victoire et affiche le top 5 des meilleures scores 
+        self.__screen.fill(pygame.color.THECOLORS["black"])
+
+        self.__draw_text(
+            "VICTOIRE !",
+            72,
+            pygame.Color("green"),
+            (WINDOW_SIZE[0] // 2, 180),
+            center=True
+        )
+        self.__draw_text(
+            "Toutes les briques ont été détruites.",
+            36,
+            pygame.Color("white"),
+            (WINDOW_SIZE[0] // 2, 260),
+            center=True
+        )
+        self.__draw_text(
+            "Appuyez sur R pour recommencer ou M pour revenir au menu.",
+            28,
+            pygame.Color("white"),
+            (WINDOW_SIZE[0] // 2, 340),
+            center=True
+        )
+        high_scores = self.__load_high_scores()
+        y = 390
+
+        self.__draw_text(
+            "TOP 5 :",
+            36,
+            pygame.Color("yellow"),
+            (WINDOW_SIZE[0] // 2, y),
+            center=True
+        )
+        for name, score in high_scores:
+            y += 40
+
+            self.__draw_text(
+                f"{name} : {score}",
+                30,
+                pygame.Color("white"),
+                (WINDOW_SIZE[0] // 2, y),
+                center=True
+            )
+
+    def __draw_level_complete(self) -> None:    # dessine l'écran de fin de niveau et annonce niveau suivant 
+        self.__screen.fill(pygame.Color("black"))
+
+        self.__draw_text(
+            f"NIVEAU {self.__current_level} TERMINÉ !",
+            72,
+            pygame.Color("green"),
+            (WINDOW_SIZE[0] // 2, 180),
+            center=True
+        )
+
+        self.__draw_text(
+            "Bravo !",
+            48,
+            pygame.Color("white"),
+            (WINDOW_SIZE[0] // 2, 280),
+            center=True
+        )
+
+        self.__draw_text(
+            "Toutes les briques ont ete detruites.",
+            32,
+            pygame.Color("white"),
+            (WINDOW_SIZE[0] // 2, 340),
+            center=True
+        )
+
+        self.__draw_text(
+            "Appuyez sur ESPACE pour continuer",
+            32,
+            pygame.Color("yellow"),
+            (WINDOW_SIZE[0] // 2, 420),
+            center=True
+        )
+        self.__level_complete_buttons.draw(self.__screen)
+    
     def __handle_menu_event(self, event: pygame.event.Event) -> None:
         match event.type:
             case pygame.QUIT:
@@ -553,7 +699,8 @@ class Game:
                     for button in self.__menu_buttons.sprites():
                         if button.rect.collidepoint(event.pos):
                             if button.text == "Jouer":
-                                self.__start_new_game()
+                                if self.__player_name != "":
+                                    self.__start_new_game()
                             elif button.text == "Quitter (Q)":
                                 self.__is_running = False
                                 pygame.quit()
@@ -566,6 +713,18 @@ class Game:
                         self.__is_running = False
                         pygame.quit()
                         sys.exit()
+                    case pygame.K_BACKSPACE:
+                        self.__player_name = self.__player_name[:-1]
+                    case pygame.K_RETURN:
+                        if self.__player_name != "":
+                            self.__start_new_game()
+                    case pygame.K_SPACE:
+                        if self.__player_name != "":
+                            self.__start_new_game()
+
+                if event.unicode.isprintable() and len(self.__player_name) < 12:
+                    if event.key not in (pygame.K_RETURN, pygame.K_BACKSPACE, pygame.K_SPACE):
+                        self.__player_name += event.unicode
 
     def __handle_playing_event(self, event: pygame.event.Event) -> None:
         match event.type:
@@ -587,6 +746,10 @@ class Game:
                             self.__paddles_sprites.sprite.actor.speed = PADDLE["speed"].copy()
                     case pygame.K_ESCAPE:
                         self.__return_to_menu()
+                    case pygame.K_n:    # touche N pour passer au niveau suivant (facilite les tests) 
+                        self.__bricks_sprites.empty()
+                        self.__victory()
+
             case pygame.KEYUP:
                 match event.key:
                     case pygame.K_LEFT | pygame.K_RIGHT:
@@ -625,6 +788,50 @@ class Game:
                         pygame.quit()
                         sys.exit()
 
+    def __handle_level_complete_event(self, event: pygame.event.Event) -> None:
+        match event.type:
+            case pygame.QUIT:
+                self.__is_running = False
+                pygame.quit()
+                sys.exit()
+
+            case pygame.KEYDOWN:
+                match event.key:
+                    case pygame.K_SPACE:
+                        self.__start_next_level()
+                    case pygame.K_q | pygame.K_ESCAPE:
+                        self.__is_running = False
+                        pygame.quit()
+                        sys.exit()
+            
+            case pygame.MOUSEMOTION:
+                for button in self.__level_complete_buttons.sprites():
+                    button.set_hovered(button.rect.collidepoint(event.pos))
+
+            case pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    for button in self.__level_complete_buttons.sprites():
+                        if button.rect.collidepoint(event.pos):
+                            self.__start_next_level()
+    
+    def __handle_victory_event(self, event: pygame.event.Event) -> None:
+        match event.type:
+            case pygame.QUIT:
+                self.__is_running = False
+                pygame.quit()
+                sys.exit()
+
+            case pygame.KEYDOWN:
+                match event.key:
+                    case pygame.K_r:
+                        self.__start_new_game()
+                    case pygame.K_m:
+                        self.__return_to_menu()
+                    case pygame.K_q | pygame.K_ESCAPE:
+                        self.__is_running = False
+                        pygame.quit()
+                        sys.exit()
+    
     # Créer les bords de l'écran
     def __draw_screen_borders(self) -> None:
         self.__screen_borders_lines = {}
@@ -726,6 +933,8 @@ class Game:
                     ball.on_collide_actor(brick, collision_axis=collision_axis)
                 
                 brick.hit()
+                self.__score += 10
+
                 if brick.health <= 0:
                     brick_sprite.kill()
                     # 50% de chance de loot un power-up (comme fait à l'étape précédente)
@@ -736,6 +945,7 @@ class Game:
                         )
                         pu = PowerUp(pu_pos)
                         PowerUpSprite(pu, pygame.Color("yellow"), self.__powerups_sprites)
+
     def __apply_random_powerup(self) -> None:
         if self.__paddles_sprites.sprite is None:
             return
@@ -798,6 +1008,7 @@ class Game:
             case 7:
                 # 7. Balle transperçante (10s)
                 self.__active_powerups["piercing_ball"] = current_time + 10000
+
     def __handle_powerups_paddle_collisions(self) -> None:
         collisions = pygame.sprite.groupcollide(
             self.__powerups_sprites,
@@ -857,11 +1068,34 @@ class Game:
         if len(self.__balls_sprites) == 0:
             self.__game_over()
 
+    def __check_victory(self) -> None:
+        if len(self.__bricks_sprites) == 0:
+            self.__victory()
+
+    def __save_score(self) -> None:     # fonction de sauvegarde des scores dans le fichier txt 
+        with open("high_scores.txt", "a", encoding="utf-8") as file:
+            file.write(f"{self.__player_name};{self.__score}\n")
+
+    def __load_high_scores(self) -> list[tuple[str, int]]:
+        scores = []
+
+        try:
+            with open("high_scores.txt", "r", encoding="utf-8") as file:
+                for line in file:
+                    name, score = line.strip().split(";")
+                    scores.append((name, int(score)))
+        except FileNotFoundError:
+            pass
+
+        scores.sort(key=lambda item: item[1], reverse=True)
+        return scores[:5]
+
     def run(self) -> None:
         self.__is_running = True
 
         while self.__is_running:
             self.__clock.tick_busy_loop(FPS)
+
             for event in pygame.event.get():
                 if self.__game_state == MAIN_MENU:
                     self.__handle_menu_event(event)
@@ -869,9 +1103,14 @@ class Game:
                     self.__handle_playing_event(event)
                 elif self.__game_state == GAME_OVER:
                     self.__handle_game_over_event(event)
+                elif self.__game_state == LEVEL_COMPLETE:
+                    self.__handle_level_complete_event(event)
+                elif self.__game_state == VICTORY:
+                    self.__handle_victory_event(event)
 
             if self.__game_state == MAIN_MENU:
                 self.__draw_menu()
+
             elif self.__game_state == PLAYING:
                 self.__screen.fill(pygame.color.THECOLORS["black"])
                 self.__draw_screen_borders()
@@ -882,12 +1121,34 @@ class Game:
                 self.__handle_balls_bricks_collisions()
                 self.__handle_powerups_paddle_collisions()
                 self.__draw_actors()
+
+                self.__draw_text(
+                    f"Niveau {self.__current_level}",
+                    32,
+                    pygame.Color("white"),
+                    (20, 20)
+                )
+
+                self.__draw_text(
+                    f"Score : {self.__score}",
+                    32,
+                    pygame.Color("white"),
+                    (20, 55)
+                )
+
                 self.__check_game_over()
+                self.__check_victory()
+
             elif self.__game_state == GAME_OVER:
                 self.__draw_game_over()
 
-            # Rafraîchir l'affichage
-            pygame.display.flip()
+            elif self.__game_state == LEVEL_COMPLETE:
+                self.__draw_level_complete()
+
+            elif self.__game_state == VICTORY:
+                self.__draw_victory()
+
+            pygame.display.flip()   # raffraichit l'affichage 
 
 # Instancier le jeu (Singleton)
 game = Game()
