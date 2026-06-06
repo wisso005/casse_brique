@@ -335,6 +335,8 @@ class BrickSprite(ActorPseudoSprite):
         
         if current_health <= 0:
             return pygame.Color(0, 0, 0)
+        elif current_health == 4:
+            return pygame.Color("#ff8888")
         elif current_health == 3:
             return pygame.Color("red")
         elif current_health == 2:
@@ -428,6 +430,7 @@ class Game:
         self.__balls_sprites = pygame.sprite.Group()
         self.__bricks_sprites = pygame.sprite.Group()
         self.__powerups_sprites = pygame.sprite.Group()
+        self.__active_powerups.clear()
 
         paddle = Paddle(
             pygame.Vector2(590, 700),
@@ -603,6 +606,17 @@ class Game:
         self.__draw_text("La balle est tombée.", 36, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 260), center=True)
         self.__draw_text("Utilisez les boutons ci-dessous", 28, pygame.Color("white"), (WINDOW_SIZE[0] // 2, 320), center=True)
         self.__game_over_buttons.draw(self.__screen)
+
+        # Affichage du score final et du top 5 sur le bord droit
+        right_x = WINDOW_SIZE[0] - 200
+        self.__draw_text(f"Score final : {self.__score}", 48, pygame.Color("yellow"), (right_x, 180), center=True)
+
+        high_scores = self.__load_high_scores()
+        y = 260
+        self.__draw_text("TOP 5 :", 36, pygame.Color("yellow"), (right_x, y), center=True)
+        for name, score in high_scores:
+            y += 40
+            self.__draw_text(f"{name} : {score}", 30, pygame.Color("white"), (right_x, y), center=True)
 
     def __draw_victory(self) -> None:   # dessine l'écran de victoire et affiche le top 5 des meilleures scores 
         self.__screen.fill(pygame.color.THECOLORS["black"])
@@ -973,14 +987,20 @@ class Game:
             case 3:
                 # 3. Balle ralentie (5s)
                 for b in balls:
-                    b.speed.y = 5 if b.speed.y > 0 else -5
+                    if b.speed.y != 0:
+                        factor = 5.0 / abs(b.speed.y)
+                        b.speed.x *= factor
+                        b.speed.y *= factor
                 self.__active_powerups["slow_ball"] = current_time + 5000
                 self.__active_powerups.pop("fast_ball", None)
             
             case 4:
                 # 4. Balle accélérée (5s)
                 for b in balls:
-                    b.speed.y = 15 if b.speed.y > 0 else -15
+                    if b.speed.y != 0:
+                        factor = 15.0 / abs(b.speed.y)
+                        b.speed.x *= factor
+                        b.speed.y *= factor
                 self.__active_powerups["fast_ball"] = current_time + 5000
                 self.__active_powerups.pop("slow_ball", None)
             
@@ -996,8 +1016,12 @@ class Game:
                         pygame.Vector2(random.randint(-15, 15), -10)
                     )
                     # Appliquer la vitesse en cours si un power-up de vitesse est actif
-                    if is_slow: new_ball.speed.y = -5
-                    elif is_fast: new_ball.speed.y = -15
+                    if is_slow: 
+                        new_ball.speed.x *= 0.5
+                        new_ball.speed.y = -5
+                    elif is_fast: 
+                        new_ball.speed.x *= 1.5
+                        new_ball.speed.y = -15
                     
                     BallSprite(new_ball, pygame.Color("green"), self.__balls_sprites)
             
@@ -1041,7 +1065,10 @@ class Game:
                 # Vitesse y par défaut de la balle (10)
                 for sprite in self.__balls_sprites.sprites():
                     b = sprite.actor
-                    b.speed.y = 10 if b.speed.y > 0 else -10
+                    if b.speed.y != 0:
+                        factor = 10.0 / abs(b.speed.y)
+                        b.speed.x *= factor
+                        b.speed.y *= factor
 
     def __update_actors(self) -> None:
         self.__paddles_sprites.update()
@@ -1057,8 +1084,9 @@ class Game:
         # Gestion du clignotement des balles
         if "invisible_ball" in self.__active_powerups:
             current_time = pygame.time.get_ticks()
-            # Fait clignoter la balle toutes les 150 millisecondes
-            if (current_time // 150) % 2 == 0:
+            time_left = self.__active_powerups["invisible_ball"] - current_time
+            # Fait clignoter la balle de manière réactive en fonction du temps restant (200 ms)
+            if (time_left // 200) % 2 == 0:
                 self.__balls_sprites.draw(self.__screen)
         else:
             # Affichage normal
@@ -1077,16 +1105,19 @@ class Game:
             file.write(f"{self.__player_name};{self.__score}\n")
 
     def __load_high_scores(self) -> list[tuple[str, int]]:
-        scores = []
+        best_scores: dict[str, int] = {}
 
         try:
             with open("high_scores.txt", "r", encoding="utf-8") as file:
                 for line in file:
-                    name, score = line.strip().split(";")
-                    scores.append((name, int(score)))
+                    name, score_str = line.strip().split(";")
+                    score = int(score_str)
+                    if name not in best_scores or score > best_scores[name]:
+                        best_scores[name] = score
         except FileNotFoundError:
             pass
 
+        scores = list(best_scores.items())
         scores.sort(key=lambda item: item[1], reverse=True)
         return scores[:5]
 
