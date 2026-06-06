@@ -128,7 +128,7 @@ class ActorPseudoSprite(pygame.sprite.Sprite):
     @property
     def actor(self) -> Actor:
         return self._actor
-   
+
     def update(self) -> None:
         # Mettre à jour le modèle
         if hasattr(self, "_rect"):
