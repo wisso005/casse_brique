@@ -45,3 +45,14 @@ Wiss;1210
 Wiss;100
 test;0
 test;430
+Wiss;780
+Wiss;10
+Wiss;20
+Wiss;10
+Wiss;10
+Wiss;290
+Wiss;120
+Wiss;470
+sixseven;67
+Wiss;10
+Wiss;420

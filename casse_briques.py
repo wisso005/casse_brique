@@ -26,7 +26,7 @@ class Actor:
         self._speed = speed
         self._alive = True
 
-    # Accesseurs public, protégés par l'encapsulation
+    # Accesseurs (Getters / Setters)
     @property
     def position(self) -> pygame.Vector2:
         return self._position
@@ -56,7 +56,7 @@ class Actor:
         self.move()
         self.on_update()
 
-    # Hooks que les sous-classes peuvent implémenter
+    # Méthodes à redéfinir dans les sous-classes (optionnel)
     def on_update(self) -> None:
         pass
 
@@ -72,7 +72,7 @@ class Actor:
     def is_alive(self) -> bool:
         return self._alive
 
-# Définir la représenttaion graphique des acteurs sur l'écran
+# Définir la représentation graphique des acteurs sur l'écran
 class ActorPseudoSprite(pygame.sprite.Sprite):
     _actor: Actor
     _color: pygame.Color
@@ -95,10 +95,8 @@ class ActorPseudoSprite(pygame.sprite.Sprite):
     def _init_image(self) -> None:
         # Créer une surface pour déposer l'image de l'acteur
         size = (int(self._actor.size.x), int(self._actor.size.y))
-        # Utiliser SRCALPHA pour permettre la transparence si nécessaire
-        # SRCALPHA rend la sprite plus polyvalente pour les formes non rectangulaires
+        # Utilise SRCALPHA pour gérer la transparence
         self._image = pygame.Surface(size, pygame.SRCALPHA)
-        # Dessin de la raquette (adapté à la taille entière)
         pygame.draw.rect(self._image, self._color, ((0, 0), size))
 
     # Définir le rectangle qui recevra l'image de l'acteur
@@ -367,8 +365,7 @@ class BrickSprite(ActorPseudoSprite):
 
 class PowerUp(Actor):
     def __init__(self, position: pygame.Vector2) -> None:
-        # Taille de 15x15, et vitesse vers le bas (y = 3)
-        super().__init__(position, pygame.Vector2(10, 10), pygame.Vector2(0, 3))
+        super().__init__(position, pygame.Vector2(10, 10), pygame.Vector2(0, 3)) # Vitesse vers le bas
 
     def on_collide_border(self, border_name: str) -> None:
         if border_name == "bottom":
@@ -378,7 +375,6 @@ class PowerUpSprite(ActorPseudoSprite):
     def _init_image(self) -> None:
         size = (int(self._actor.size.x), int(self._actor.size.y))
         self._image = pygame.Surface(size, pygame.SRCALPHA)
-        # On dessine un cercle jaune pour différencier le powerup des briques
         pygame.draw.circle(
             self._image, 
             pygame.Color("yellow"), 
@@ -942,7 +938,7 @@ class Game:
                 else:
                     collision_axis = "vertical"
                 
-                # REBOND UNIQUEMENT SI NON-TRANSPERÇANT
+                # Rebond si la balle n'est pas transperçante
                 if not is_piercing:
                     ball.on_collide_actor(brick, collision_axis=collision_axis)
                 
@@ -951,8 +947,8 @@ class Game:
 
                 if brick.health <= 0:
                     brick_sprite.kill()
-                    # 50% de chance de loot un power-up (comme fait à l'étape précédente)
-                    if random.random() < 0.50: 
+                    # 50% de chance d'apparition d'un power-up
+                    if random.random() < 0.50:
                         pu_pos = pygame.Vector2(
                             brick.position.x + (brick.size.x / 2) - 7.5, 
                             brick.position.y
@@ -973,19 +969,19 @@ class Game:
 
         match effect:
             case 1:
-                # 1. Agrandir la raquette (10s)
+                # Agrandit la raquette temporairement
                 paddle.set_size(pygame.Vector2(200, 10))
                 self.__active_powerups["enlarge_paddle"] = current_time + 10000
                 self.__active_powerups.pop("shrink_paddle", None) # Annule l'effet inverse
             
             case 2:
-                # 2. Rapetissir la raquette (10s)
+                # Rapetisse la raquette temporairement
                 paddle.set_size(pygame.Vector2(50, 10))
                 self.__active_powerups["shrink_paddle"] = current_time + 10000
                 self.__active_powerups.pop("enlarge_paddle", None)
             
             case 3:
-                # 3. Balle ralentie (5s)
+                # Ralentit toutes les balles
                 for b in balls:
                     if b.speed.y != 0:
                         factor = 5.0 / abs(b.speed.y)
@@ -995,7 +991,7 @@ class Game:
                 self.__active_powerups.pop("fast_ball", None)
             
             case 4:
-                # 4. Balle accélérée (5s)
+                # Accélère toutes les balles
                 for b in balls:
                     if b.speed.y != 0:
                         factor = 15.0 / abs(b.speed.y)
@@ -1005,7 +1001,7 @@ class Game:
                 self.__active_powerups.pop("slow_ball", None)
             
             case 5:
-                # 5. Balles supplémentaires (+10 balles)
+                # Génère 10 balles supplémentaires
                 is_slow = "slow_ball" in self.__active_powerups
                 is_fast = "fast_ball" in self.__active_powerups
                 
@@ -1026,19 +1022,19 @@ class Game:
                     BallSprite(new_ball, pygame.Color("green"), self.__balls_sprites)
             
             case 6:
-                # 6. Balle invisible (2s)
+                # Rend les balles clignotantes / invisibles
                 self.__active_powerups["invisible_ball"] = current_time + 2000
             
             case 7:
-                # 7. Balle transperçante (10s)
+                # Balle transperçante (ne rebondit plus sur les briques)
                 self.__active_powerups["piercing_ball"] = current_time + 10000
 
     def __handle_powerups_paddle_collisions(self) -> None:
         collisions = pygame.sprite.groupcollide(
             self.__powerups_sprites,
             self.__paddles_sprites,
-            True,  # True = détruit le powerup
-            False  # False = ne détruit pas la raquette
+            True,
+            False
         )
         for powerup in collisions:
             self.__apply_random_powerup()
@@ -1085,7 +1081,7 @@ class Game:
         if "invisible_ball" in self.__active_powerups:
             current_time = pygame.time.get_ticks()
             time_left = self.__active_powerups["invisible_ball"] - current_time
-            # Fait clignoter la balle de manière réactive en fonction du temps restant (200 ms)
+            # Fait clignoter la balle (intervalle de 200ms)
             if (time_left // 200) % 2 == 0:
                 self.__balls_sprites.draw(self.__screen)
         else:
